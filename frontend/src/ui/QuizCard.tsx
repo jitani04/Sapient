@@ -1,23 +1,27 @@
 import { useState } from "react";
 
-import { submitQuizAttempt } from "../api";
+import { skipQuizQuestion, submitQuizAttempt } from "../api";
 import type { AttemptResult, QuizData } from "../types";
 
 interface Props {
   quiz: QuizData;
   onAnswered?: (result: AttemptResult, answer: string) => void;
+  onSkipped?: (result: AttemptResult) => void;
 }
 
-export function QuizCard({ quiz, onAnswered }: Props) {
+type PendingAction = "submit" | "skip" | null;
+
+export function QuizCard({ quiz, onAnswered, onSkipped }: Props) {
   const [selected, setSelected] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [skipped, setSkipped] = useState(false);
   const [result, setResult] = useState<AttemptResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit() {
     if (!selected.trim() || submitted) return;
-    setLoading(true);
+    setPendingAction("submit");
     setError(null);
     try {
       const res = await submitQuizAttempt(quiz.quiz_id, selected);
@@ -27,9 +31,32 @@ export function QuizCard({ quiz, onAnswered }: Props) {
     } catch {
       setError("Failed to submit. Try again.");
     } finally {
-      setLoading(false);
+      setPendingAction(null);
     }
   }
+
+  async function handleSkip() {
+    if (submitted) return;
+    setPendingAction("skip");
+    setError(null);
+    try {
+      const res = await skipQuizQuestion(quiz.quiz_id);
+      setResult(res);
+      setSkipped(true);
+      setSubmitted(true);
+      onSkipped?.(res);
+    } catch {
+      setError("Failed to skip. Try again.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  const isPending = pendingAction !== null;
+  const resultClassName = result
+    ? `quiz-result ${result.is_correct ? "quiz-result-correct" : skipped ? "quiz-result-skipped" : "quiz-result-wrong"}`
+    : "quiz-result";
+  const resultHeader = result?.is_correct ? "✓ Correct!" : skipped ? "Skipped" : "✗ Not quite";
 
   return (
     <div className="quiz-card">
@@ -53,7 +80,7 @@ export function QuizCard({ quiz, onAnswered }: Props) {
               <button
                 key={opt}
                 className={cls}
-                disabled={submitted}
+                disabled={submitted || isPending}
                 onClick={() => setSelected(opt)}
                 type="button"
               >
@@ -65,7 +92,7 @@ export function QuizCard({ quiz, onAnswered }: Props) {
       ) : (
         <textarea
           className="quiz-input"
-          disabled={submitted}
+          disabled={submitted || isPending}
           onChange={(e) => setSelected(e.target.value)}
           placeholder="Type your answer…"
           rows={3}
@@ -76,20 +103,30 @@ export function QuizCard({ quiz, onAnswered }: Props) {
       {error && <p className="error-text">{error}</p>}
 
       {!submitted && (
-        <button
-          className="button button-primary quiz-submit"
-          disabled={!selected.trim() || loading}
-          onClick={() => void handleSubmit()}
-          type="button"
-        >
-          {loading ? "Checking…" : "Submit answer"}
-        </button>
+        <div className="quiz-actions">
+          <button
+            className="button button-primary quiz-submit"
+            disabled={!selected.trim() || isPending}
+            onClick={() => void handleSubmit()}
+            type="button"
+          >
+            {pendingAction === "submit" ? "Checking…" : "Submit answer"}
+          </button>
+          <button
+            className="button button-secondary quiz-skip"
+            disabled={isPending}
+            onClick={() => void handleSkip()}
+            type="button"
+          >
+            {pendingAction === "skip" ? "Skipping…" : "Skip question"}
+          </button>
+        </div>
       )}
 
       {result && (
-        <div className={`quiz-result ${result.is_correct ? "quiz-result-correct" : "quiz-result-wrong"}`}>
+        <div className={resultClassName}>
           <div className="quiz-result-header">
-            {result.is_correct ? "✓ Correct!" : "✗ Not quite"}
+            {resultHeader}
           </div>
           {!result.is_correct && (
             <div className="quiz-result-answer">

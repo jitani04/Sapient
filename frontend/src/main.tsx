@@ -6,9 +6,11 @@ import { RouterProvider } from "react-router-dom";
 
 import { router } from "./router";
 import "./styles.css";
+import { applyTheme, getStoredTheme } from "./theme";
 
 const queryClient = new QueryClient();
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+applyTheme(getStoredTheme());
 
 const app = (
   <React.StrictMode>

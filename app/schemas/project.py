@@ -19,3 +19,14 @@ class ProjectProfileRead(BaseModel):
     goals: str | None = None
     mind_map: dict[str, Any] | None = None
     created_at: datetime
+
+
+class ProjectProgressRead(BaseModel):
+    total_sessions: int
+    sessions_with_summary: int
+    quizzes_attempted: int
+    quizzes_passed: int
+    pass_rate: float | None
+    concepts_covered: list[str]
+    weak_areas: list[str]
+    next_review: list[str]

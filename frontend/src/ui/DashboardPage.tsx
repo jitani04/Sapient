@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
-import { listConversations, listMaterials } from "../api";
+import { getCurrentUser, listConversations } from "../api";
+import type { Conversation } from "../types";
 
 const SUBJECT_ICONS: Record<string, string> = {
   biology: "🧬", chemistry: "⚗️", physics: "⚛️", math: "∑",
@@ -17,70 +18,102 @@ function subjectIcon(subject: string): string {
   return SUBJECT_ICONS.default;
 }
 
-function progressFromCount(n: number): number {
-  if (n === 0) return 0;
-  if (n <= 2) return 20;
-  if (n <= 5) return 45;
-  if (n <= 10) return 68;
-  return 85;
+function timeOfDayGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function deriveProgress(convs: Conversation[]): {
+  progress: number;
+  badge: string;
+  tooltip: string;
+  nextReview: string[];
+} {
+  const covered = new Set<string>();
+  const struggled = new Set<string>();
+  let nextReview: string[] = [];
+  let latestSummaryAt = "";
+
+  for (const c of convs) {
+    if (!c.summary) continue;
+    c.summary.covered.forEach((t) => covered.add(t));
+    c.summary.struggled_with.forEach((t) => struggled.add(t));
+    if (c.created_at > latestSummaryAt) {
+      latestSummaryAt = c.created_at;
+      nextReview = c.summary.next_review;
+    }
+  }
+
+  const hasSummary = covered.size > 0 || struggled.size > 0;
+
+  if (!hasSummary) {
+    const n = convs.length;
+    const progress = n === 0 ? 0 : n <= 2 ? 20 : n <= 5 ? 45 : n <= 10 ? 68 : 85;
+    return { progress, badge: `${n} session${n !== 1 ? "s" : ""}`, tooltip: "Complete a session to see real progress", nextReview: [] };
+  }
+
+  const knownTotal = covered.size + nextReview.length;
+  const progress = knownTotal > 0 ? Math.min(94, Math.round((covered.size / knownTotal) * 100)) : 30;
+  const weakCount = struggled.size;
+  const badge = `${covered.size} topic${covered.size !== 1 ? "s" : ""} covered`;
+  const tooltip = [
+    `${covered.size} topic${covered.size !== 1 ? "s" : ""} covered`,
+    weakCount > 0 ? `${weakCount} area${weakCount !== 1 ? "s" : ""} to strengthen` : null,
+    nextReview.length > 0 ? `${nextReview.length} topic${nextReview.length !== 1 ? "s" : ""} to review` : null,
+  ].filter(Boolean).join(" · ");
+
+  return { progress, badge, tooltip, nextReview };
 }
 
 export function DashboardPage() {
+  const { data: user } = useQuery({
+    queryKey: ["me"],
+    queryFn: getCurrentUser,
+  });
+
   const { data: conversations = [] } = useQuery({
     queryKey: ["conversations"],
     queryFn: listConversations,
   });
 
-  const { data: materials = [] } = useQuery({
-    queryKey: ["materials"],
-    queryFn: listMaterials,
-  });
-
   const projects = (() => {
-    const map = new Map<string, { sessions: { id: number; topic: string }[]; lastActive: string }>();
+    const map = new Map<string, { convs: Conversation[]; lastActive: string }>();
     for (const c of conversations) {
       const subject = c.subject ?? "General";
-      const existing = map.get(subject) ?? { sessions: [], lastActive: c.created_at };
-      existing.sessions.push({ id: c.id, topic: subject });
+      const existing = map.get(subject) ?? { convs: [], lastActive: c.created_at };
+      existing.convs.push(c);
       if (c.created_at > existing.lastActive) existing.lastActive = c.created_at;
       map.set(subject, existing);
     }
-    return Array.from(map.entries()).map(([subject, { sessions, lastActive }]) => ({
-      subject,
-      sessions,
-      lastActive,
-      progress: progressFromCount(sessions.length),
-      latestId: Math.max(...sessions.map((s) => s.id)),
-      recentTopic: sessions[sessions.length - 1]?.topic,
-    }));
+    return Array.from(map.entries()).map(([subject, { convs, lastActive }]) => {
+      const { progress, badge, tooltip, nextReview } = deriveProgress(convs);
+      return {
+        subject,
+        sessions: convs,
+        lastActive,
+        progress,
+        badge,
+        tooltip,
+        nextReview,
+        latestId: Math.max(...convs.map((c) => c.id)),
+      };
+    });
   })();
 
-  const subjects = new Set(projects.map((p) => p.subject)).size;
-
-  function formatDate(value: string): string {
-    return new Date(value).toLocaleDateString([], { month: "short", day: "numeric" });
-  }
+  const displayName = user?.name?.trim() || user?.email.split("@")[0] || "there";
+  const firstName = displayName.split(/\s+/)[0];
 
   return (
     <div className="dashboard">
       <div className="dashboard-greeting">
-        <h1>Dashboard</h1>
+        <h1>{timeOfDayGreeting()}, {firstName}</h1>
         <p>Your study projects and recent activity.</p>
-      </div>
-
-      <div className="stats-row">
-        <div className="stat-card">
-          <div className="stat-card-value">{conversations.length}</div>
-          <div className="stat-card-label">Total sessions</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-value">{materials.length}</div>
-          <div className="stat-card-label">Uploaded materials</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-value">{subjects}</div>
-          <div className="stat-card-label">Subjects studied</div>
-        </div>
       </div>
 
       <div>
@@ -100,15 +133,21 @@ export function DashboardPage() {
           </div>
         ) : (
           <div className="project-grid">
-            {projects.map(({ subject, sessions, progress, recentTopic, lastActive }) => (
+            {projects.map(({ subject, sessions, progress, badge, tooltip, nextReview, lastActive }) => (
               <Link key={subject} to={`/projects/${encodeURIComponent(subject)}`} className="project-card">
                 <div className="project-card-header">
                   <div className="project-card-icon">{subjectIcon(subject)}</div>
-                  <span className="project-card-badge">{Math.round(progress)}% mastery</span>
+                  <span className="project-card-badge" title={tooltip}>{badge}</span>
                 </div>
                 <div className="project-card-name">{subject}</div>
-                {recentTopic && <div className="project-card-topic">{recentTopic}</div>}
-                <div className="progress-bar">
+                {nextReview.length > 0 ? (
+                  <div className="project-card-hint">
+                    Next: {nextReview.slice(0, 2).join(", ")}{nextReview.length > 2 ? "…" : ""}
+                  </div>
+                ) : (
+                  <div className="project-card-topic">{sessions.length} session{sessions.length !== 1 ? "s" : ""}</div>
+                )}
+                <div className="progress-bar" title={tooltip}>
                   <div className="progress-fill" style={{ width: `${progress}%` }} />
                 </div>
                 <div className="project-card-footer">

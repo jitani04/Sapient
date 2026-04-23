@@ -5,11 +5,15 @@ import { ChatPage } from "./ui/ChatPage";
 import { DashboardPage } from "./ui/DashboardPage";
 import { HistoryPage } from "./ui/HistoryPage";
 import { LandingPage } from "./ui/LandingPage";
+import { MaterialDetailPage } from "./ui/MaterialDetailPage";
 import { MaterialsPage } from "./ui/MaterialsPage";
+import { NotFoundPage } from "./ui/NotFoundPage";
 import { OnboardingPage } from "./ui/OnboardingPage";
+import { ProfilePage } from "./ui/ProfilePage";
 import { ProjectPage } from "./ui/ProjectPage";
 import { ProjectSetupPage } from "./ui/ProjectSetupPage";
 import { RequireAuth } from "./ui/RequireAuth";
+import { SettingsPage } from "./ui/SettingsPage";
 import { StartMaterialsPage } from "./ui/StartMaterialsPage";
 import { StartMethodPage } from "./ui/StartMethodPage";
 import { StartTopicPage } from "./ui/StartTopicPage";
@@ -36,7 +40,10 @@ export const router = createBrowserRouter([
           { path: "/sessions/new", element: <ChatPage /> },
           { path: "/sessions/:conversationId", element: <ChatPage /> },
           { path: "/materials", element: <MaterialsPage /> },
+          { path: "/materials/:materialId", element: <MaterialDetailPage /> },
           { path: "/history", element: <HistoryPage /> },
+          { path: "/profile", element: <ProfilePage /> },
+          { path: "/settings", element: <SettingsPage /> },
         ],
       },
       { path: "/start/topic", element: <StartTopicPage /> },
@@ -49,4 +56,5 @@ export const router = createBrowserRouter([
   },
   { path: "/chat", element: <LegacyChatRedirect /> },
   { path: "/chat/:conversationId", element: <LegacyChatRedirect /> },
+  { path: "*", element: <NotFoundPage /> },
 ]);

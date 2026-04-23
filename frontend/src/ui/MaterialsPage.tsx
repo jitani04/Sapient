@@ -1,5 +1,6 @@
 import { ChangeEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 
 import { deleteMaterial, listMaterials, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
@@ -106,7 +107,9 @@ export function MaterialsPage() {
             <div key={m.id} className="material-row">
               <div className="material-row-icon">📄</div>
               <div className="material-row-info">
-                <div className="material-row-name">{m.filename}</div>
+                <Link className="material-row-name material-row-link" to={`/materials/${m.id}`}>
+                  {m.filename}
+                </Link>
                 <div className="material-row-meta">
                   {m.subject ?? "General"} · {formatDate(m.created_at)}
                   {m.error_message ? ` · ${m.error_message}` : ""}

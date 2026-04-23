@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.artifacts import router as artifacts_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.conversations import router as conversations_router
@@ -27,6 +28,7 @@ app.include_router(chat_router)
 app.include_router(materials_router)
 app.include_router(projects_router)
 app.include_router(quiz_router)
+app.include_router(artifacts_router)
 
 
 @app.get("/health", tags=["health"])

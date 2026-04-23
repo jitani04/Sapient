@@ -38,12 +38,23 @@ class OnboardingRequest(BaseModel):
     use_case: str
 
 
+class TutorPreferencesRequest(BaseModel):
+    tutor_name: str
+    tutor_tone: str
+    tutor_style: str
+    tutor_instructions: str = ""
+
+
 class UserResponse(BaseModel):
     id: int
     email: EmailStr
     name: str | None
     use_case: str | None
     onboarding_complete: bool
+    tutor_name: str
+    tutor_tone: str
+    tutor_style: str
+    tutor_instructions: str
 
     @classmethod
     def from_user(cls, user: User) -> "UserResponse":
@@ -53,6 +64,10 @@ class UserResponse(BaseModel):
             name=user.name,
             use_case=user.use_case,
             onboarding_complete=user.onboarding_complete,
+            tutor_name=user.tutor_name,
+            tutor_tone=user.tutor_tone,
+            tutor_style=user.tutor_style,
+            tutor_instructions=user.tutor_instructions,
         )
 
 
@@ -131,6 +146,38 @@ async def me(user_id: Annotated[int, Depends(get_user_id)], db: DbDep) -> UserRe
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    return UserResponse.from_user(user)
+
+
+@router.post("/tutor", response_model=UserResponse)
+async def update_tutor_preferences(
+    body: TutorPreferencesRequest,
+    user_id: Annotated[int, Depends(get_user_id)],
+    db: DbDep,
+) -> UserResponse:
+    tutor_name = body.tutor_name.strip()
+    tutor_tone = body.tutor_tone.strip()
+    tutor_style = body.tutor_style.strip()
+    tutor_instructions = body.tutor_instructions.strip()
+
+    if not tutor_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tutor name is required.")
+    if not tutor_tone:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tutor tone is required.")
+    if not tutor_style:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tutor style is required.")
+
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    user.tutor_name = tutor_name[:80]
+    user.tutor_tone = tutor_tone[:80]
+    user.tutor_style = tutor_style[:120]
+    user.tutor_instructions = tutor_instructions[:1000]
+    await db.commit()
+    await db.refresh(user)
+
     return UserResponse.from_user(user)
 
 

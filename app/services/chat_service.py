@@ -1,4 +1,6 @@
+import json
 import logging
+import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
@@ -7,6 +9,7 @@ from langchain_core.messages import ToolMessage as LCToolMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.key_idea import KeyIdea
 from app.models.message import Message, MessageRole
 from app.models.quiz import Quiz
 from app.services import retriever
@@ -16,7 +19,7 @@ from app.services.prompt_builder import ChatTurn, build_responses_input
 
 logger = logging.getLogger(__name__)
 
-QUIZ_TOOLS = [
+AGENT_TOOLS = [
     {
         "type": "function",
         "function": {
@@ -54,7 +57,74 @@ QUIZ_TOOLS = [
                 "required": ["question", "quiz_type", "correct_answer", "explanation"],
             },
         },
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_key_idea",
+            "description": (
+                "Save an important concept or insight to the student's session notes. "
+                "Call this when you've explained something the student now understands, corrected a misconception, "
+                "or identified a definition worth keeping. Keep concept short (3-6 words) and summary to 1-2 sentences."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "concept": {
+                        "type": "string",
+                        "description": "Short name for the concept, e.g. 'SQL LEFT JOIN' or 'Null Hypothesis'.",
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "1-2 sentence plain-English explanation the student should keep.",
+                    },
+                },
+                "required": ["concept", "summary"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_diagram",
+            "description": (
+                "Generate a visual Excalidraw diagram to illustrate a concept. "
+                "Use this whenever a concept is spatial, structural, or relational — "
+                "e.g. system architectures, flowcharts, process steps, hierarchies, "
+                "comparisons, cause-and-effect, geometry, or anything better shown than described. "
+                "Keep diagrams simple: 4-10 elements.\n\n"
+                "Each element in the JSON array requires these fields:\n"
+                '{ "id": "<unique 8-char string>", '
+                '"type": "rectangle"|"ellipse"|"diamond"|"arrow"|"line"|"text", '
+                '"x": <number>, "y": <number>, "width": <number>, "height": <number>, '
+                '"angle": 0, "strokeColor": "#1e1e1e", "backgroundColor": "transparent", '
+                '"fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid", '
+                '"roughness": 1, "opacity": 100, "groupIds": [], "frameId": null, '
+                '"roundness": null, "seed": <random int>, "version": 1, "versionNonce": 0, '
+                '"isDeleted": false, "boundElements": null, "updated": 0, "link": null, "locked": false }\n'
+                'Text elements also need: "text": "label", "fontSize": 16, "fontFamily": 1, '
+                '"textAlign": "center", "verticalAlign": "middle", "containerId": null, "lineHeight": 1.25\n'
+                'Arrow elements also need: "points": [[0,0],[dx,dy]], "startBinding": null, '
+                '"endBinding": null, "startArrowhead": null, "endArrowhead": "arrow", "elbowed": false\n\n'
+                "Place elements starting around x:100, y:80. Space them 150-200px apart. "
+                "Use separate text elements as labels, centered over shapes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "elements": {
+                        "type": "string",
+                        "description": "JSON array string of Excalidraw elements.",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Short diagram title, e.g. 'TCP Three-Way Handshake'.",
+                    },
+                },
+                "required": ["elements", "title"],
+            },
+        },
+    },
 ]
 
 
@@ -62,6 +132,28 @@ QUIZ_TOOLS = [
 class SseEvent:
     event: str
     data: dict[str, Any]
+
+
+async def _save_key_idea(
+    *,
+    session: AsyncSession,
+    user_id: int,
+    conversation_id: int,
+    subject: str | None,
+    concept: str,
+    summary: str,
+) -> KeyIdea:
+    idea = KeyIdea(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        subject=subject,
+        concept=concept,
+        summary=summary,
+    )
+    session.add(idea)
+    await session.commit()
+    await session.refresh(idea)
+    return idea
 
 
 async def _save_quiz(
@@ -97,7 +189,8 @@ async def stream_chat(
     user_message: str,
     system_prompt: str,
 ) -> AsyncIterator[SseEvent]:
-    await get_conversation_for_user(session=session, conversation_id=conversation_id, user_id=user_id)
+    conv = await get_conversation_for_user(session=session, conversation_id=conversation_id, user_id=user_id)
+    subject = conv.subject
 
     user_msg = Message(conversation_id=conversation_id, role=MessageRole.USER, content=user_message)
     session.add(user_msg)
@@ -156,7 +249,7 @@ async def stream_chat(
     tool_calls_data: list[dict[str, Any]] = []
 
     try:
-        async for event in llm_service.stream_with_tools(input_messages=input_messages, tools=QUIZ_TOOLS):
+        async for event in llm_service.stream_with_tools(input_messages=input_messages, tools=AGENT_TOOLS):
             if event.type == "token" and event.delta:
                 assistant_parts.append(event.delta)
                 yield SseEvent(event="token", data={"delta": event.delta})
@@ -195,7 +288,52 @@ async def stream_chat(
                         "options": quiz.options,
                     })
 
-            # Second pass: stream the intro response, then emit quiz card(s)
+                elif tc["name"] == "create_diagram":
+                    args = tc["args"]
+                    raw = args.get("elements", "[]")
+                    try:
+                        elements = json.loads(raw) if isinstance(raw, str) else raw
+                        for el in elements:
+                            if not el.get("id"):
+                                el["id"] = str(uuid.uuid4())[:8]
+                    except (json.JSONDecodeError, TypeError, AttributeError):
+                        elements = []
+                    lc_tool_messages.append(
+                        LCToolMessage(
+                            content="Diagram created and displayed to the student.",
+                            tool_call_id=tc["id"],
+                        )
+                    )
+                    if elements:
+                        yield SseEvent(event="diagram", data={
+                            "id": str(uuid.uuid4())[:8],
+                            "elements": elements,
+                            "title": args.get("title"),
+                        })
+
+                elif tc["name"] == "save_key_idea":
+                    args = tc["args"]
+                    idea = await _save_key_idea(
+                        session=session,
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                        subject=subject,
+                        concept=args["concept"],
+                        summary=args["summary"],
+                    )
+                    lc_tool_messages.append(
+                        LCToolMessage(
+                            content=f"Key idea '{idea.concept}' saved to student's notes.",
+                            tool_call_id=tc["id"],
+                        )
+                    )
+                    yield SseEvent(event="key_idea", data={
+                        "id": idea.id,
+                        "concept": idea.concept,
+                        "summary": idea.summary,
+                    })
+
+            # Second pass: stream follow-up text, then emit quiz cards
             original_lc = llm_service.to_langchain_messages(input_messages)
             second_pass = original_lc + [ai_message_chunk] + lc_tool_messages
 

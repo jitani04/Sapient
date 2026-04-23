@@ -14,6 +14,7 @@ export interface Conversation {
   subject: string | null;
   created_at: string;
   messages: Message[];
+  summary: SessionSummary | null;
 }
 
 export interface UserProfile {
@@ -22,6 +23,17 @@ export interface UserProfile {
   name: string | null;
   use_case: string | null;
   onboarding_complete: boolean;
+  tutor_name: string;
+  tutor_tone: string;
+  tutor_style: string;
+  tutor_instructions: string;
+}
+
+export interface TutorPreferences {
+  tutor_name: string;
+  tutor_tone: string;
+  tutor_style: string;
+  tutor_instructions: string;
 }
 
 export interface AuthResult {
@@ -138,4 +150,51 @@ export interface ChatQuizEvent {
   data: QuizData;
 }
 
-export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatQuizEvent;
+export interface ChatKeyIdeaEvent {
+  event: "key_idea";
+  data: {
+    id: number;
+    concept: string;
+    summary: string;
+  };
+}
+
+export interface DiagramData {
+  id: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  elements: any[];
+  title?: string;
+}
+
+export interface ChatDiagramEvent {
+  event: "diagram";
+  data: DiagramData;
+}
+
+export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent;
+
+export interface KeyIdea {
+  id: number;
+  concept: string;
+  summary: string;
+  subject: string | null;
+  created_at: string;
+}
+
+export interface SessionSummary {
+  covered: string[];
+  struggled_with: string[];
+  key_concepts: string[];
+  next_review: string[];
+}
+
+export interface ProjectProgress {
+  total_sessions: number;
+  sessions_with_summary: number;
+  quizzes_attempted: number;
+  quizzes_passed: number;
+  pass_rate: number | null;
+  concepts_covered: string[];
+  weak_areas: string[];
+  next_review: string[];
+}

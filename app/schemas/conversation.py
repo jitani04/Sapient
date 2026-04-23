@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,3 +18,4 @@ class ConversationRead(BaseModel):
     subject: str | None = None
     created_at: datetime
     messages: list[MessageRead] = Field(default_factory=list)
+    summary: dict[str, Any] | None = None

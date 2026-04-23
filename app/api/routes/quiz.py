@@ -52,3 +52,20 @@ async def submit_attempt(
     await session.commit()
 
     return AttemptResult(is_correct=is_correct, correct_answer=quiz.correct_answer, explanation=quiz.explanation)
+
+
+@router.post("/quizzes/{quiz_id}/skip", response_model=AttemptResult)
+async def skip_quiz(
+    quiz_id: int,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AttemptResult:
+    quiz = await session.get(Quiz, quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=404, detail="Quiz not found.")
+
+    conv = await session.get(Conversation, quiz.conversation_id)
+    if not conv or conv.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized.")
+
+    return AttemptResult(is_correct=False, correct_answer=quiz.correct_answer, explanation=quiz.explanation)

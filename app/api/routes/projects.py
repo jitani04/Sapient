@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_user_id
 from app.core.config import get_settings
 from app.db.session import get_db_session
+from app.models.conversation import Conversation
 from app.models.project_profile import ProjectProfile
-from app.schemas.project import ProjectProfileRead, ProjectSetupRequest
+from app.models.quiz import Quiz, QuizAttempt
+from app.schemas.project import ProjectProfileRead, ProjectProgressRead, ProjectSetupRequest
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
@@ -33,6 +35,61 @@ async def _get_or_create_profile(
         await session.commit()
         await session.refresh(profile)
     return profile
+
+
+@router.get("/{subject}/progress", response_model=ProjectProgressRead)
+async def get_project_progress(
+    subject: str,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ProjectProgressRead:
+    conv_result = await session.execute(
+        select(Conversation).where(
+            Conversation.user_id == user_id,
+            Conversation.subject == subject,
+        )
+    )
+    conversations = list(conv_result.scalars())
+    conv_ids = [c.id for c in conversations]
+
+    quizzes_attempted = 0
+    quizzes_passed = 0
+    if conv_ids:
+        attempt_result = await session.execute(
+            select(QuizAttempt)
+            .join(Quiz, Quiz.id == QuizAttempt.quiz_id)
+            .where(Quiz.conversation_id.in_(conv_ids), QuizAttempt.user_id == user_id)
+        )
+        attempts = list(attempt_result.scalars())
+        quizzes_attempted = len(attempts)
+        quizzes_passed = sum(1 for a in attempts if a.is_correct)
+
+    covered: set[str] = set()
+    struggled: set[str] = set()
+    next_review: list[str] = []
+    latest_summary_ts = None
+
+    for c in conversations:
+        if not c.summary:
+            continue
+        covered.update(c.summary.get("covered", []))
+        struggled.update(c.summary.get("struggled_with", []))
+        if latest_summary_ts is None or c.created_at > latest_summary_ts:
+            latest_summary_ts = c.created_at
+            next_review = c.summary.get("next_review", [])
+
+    pass_rate = round(quizzes_passed / quizzes_attempted * 100, 1) if quizzes_attempted > 0 else None
+
+    return ProjectProgressRead(
+        total_sessions=len(conversations),
+        sessions_with_summary=sum(1 for c in conversations if c.summary),
+        quizzes_attempted=quizzes_attempted,
+        quizzes_passed=quizzes_passed,
+        pass_rate=pass_rate,
+        concepts_covered=sorted(covered),
+        weak_areas=sorted(struggled),
+        next_review=next_review,
+    )
 
 
 @router.get("/{subject}", response_model=ProjectProfileRead)

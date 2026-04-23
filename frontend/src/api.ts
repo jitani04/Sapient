@@ -1,5 +1,5 @@
 import { getToken } from "./auth";
-import type { AttemptResult, AuthResult, ChatRequest, ChatStreamEvent, Conversation, Material, ProjectProfile, QuizRead, UserProfile } from "./types";
+import type { AttemptResult, AuthResult, ChatRequest, ChatStreamEvent, Conversation, KeyIdea, Material, ProjectProfile, ProjectProgress, QuizRead, SessionSummary, TutorPreferences, UserProfile } from "./types";
 
 function resolveDefaultApiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -89,6 +89,15 @@ export async function completeOnboarding(name: string, useCase: string): Promise
   return parseJson(response);
 }
 
+export async function updateTutorPreferences(preferences: TutorPreferences): Promise<UserProfile> {
+  const response = await fetch(`${API_BASE_URL}/auth/tutor`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(preferences),
+  });
+  return parseJson(response);
+}
+
 export async function listConversations(): Promise<Conversation[]> {
   const response = await fetch(`${API_BASE_URL}/conversations`, {
     headers: buildHeaders(),
@@ -150,6 +159,13 @@ export async function setupProject(subject: string, level: string | null, goals:
   return parseJson(response);
 }
 
+export async function getProjectProgress(subject: string): Promise<ProjectProgress> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/progress`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
 export async function generateMindMap(subject: string): Promise<ProjectProfile> {
   const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/mindmap`, {
     method: "POST",
@@ -170,6 +186,39 @@ export async function submitQuizAttempt(quizId: number, answer: string): Promise
     method: "POST",
     headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ answer }),
+  });
+  return parseJson(response);
+}
+
+export async function skipQuizQuestion(quizId: number): Promise<AttemptResult> {
+  const response = await fetch(`${API_BASE_URL}/quizzes/${quizId}/skip`, {
+    method: "POST",
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function getKeyIdeas(conversationId: number): Promise<KeyIdea[]> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/key-ideas`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function deleteKeyIdea(ideaId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/key-ideas/${ideaId}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    await parseJson(response);
+  }
+}
+
+export async function generateSummary(conversationId: number): Promise<SessionSummary> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/summary`, {
+    method: "POST",
+    headers: buildHeaders(),
   });
   return parseJson(response);
 }
