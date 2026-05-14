@@ -4,9 +4,10 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { RateLimitError, createConversation, deleteConversation, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listMaterials, streamChat, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
-import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, KeyIdea, Material, Message, QuizData, RetrievedSource } from "../types";
+import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, ImageData, KeyIdea, Material, Message, QuizData, RetrievedSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { DiagramCard } from "./DiagramCard";
+import { ImageArtifactCard } from "./ImageArtifactCard";
 import { LectureModeOverlay } from "./LectureModeOverlay";
 import { MarkdownText } from "./MarkdownText";
 import { QuizCard } from "./QuizCard";
@@ -149,6 +150,7 @@ export function ChatPage() {
   const [sseQuizzes, setSseQuizzes] = useState<QuizData[]>([]);
   const [sseKeyIdeas, setSseKeyIdeas] = useState<KeyIdea[]>([]);
   const [sseDiagrams, setSseDiagrams] = useState<DiagramData[]>([]);
+  const [sseImages, setSseImages] = useState<ImageData[]>([]);
   const [showNotes, setShowNotes] = useState(false);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -451,6 +453,10 @@ export function ChatPage() {
       setSseDiagrams((d) => [...d, event.data]);
       return;
     }
+    if (event.event === "image") {
+      setSseImages((images) => [...images, event.data]);
+      return;
+    }
     if (event.event === "key_idea") {
       setSseKeyIdeas((ks) => [...ks, {
         id: event.data.id,
@@ -682,6 +688,19 @@ export function ChatPage() {
                       <span className="msg-artifact-source">from {tutorName}</span>
                     </div>
                     <DiagramCard diagram={d} />
+                  </div>
+                </div>
+              ))}
+
+              {sseImages.map((image) => (
+                <div key={image.id} className="msg msg-artifact msg-artifact-image">
+                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                  <div className="msg-body">
+                    <div className="msg-sender msg-artifact-label">
+                      <span className="msg-artifact-tag">Image</span>
+                      <span className="msg-artifact-source">from {tutorName}</span>
+                    </div>
+                    <ImageArtifactCard image={image} />
                   </div>
                 </div>
               ))}

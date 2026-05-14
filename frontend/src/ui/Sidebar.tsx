@@ -210,39 +210,6 @@ export function Sidebar() {
           </>
         )}
 
-        {recentConversations.length > 0 && (
-          <>
-            <div className="sidebar-divider" />
-            <div className="sidebar-section">Recent</div>
-            {recentConversations.map((c) => {
-              const project = c.subject ?? "General";
-              return (
-                <Link
-                  key={c.id}
-                  to={`/sessions/${c.id}`}
-                  className={`sidebar-item sidebar-chat-item sidebar-item-deletable ${location.pathname === `/sessions/${c.id}` ? "active" : ""}`}
-                  title={`${project} · Study session #${c.id}`}
-                >
-                  <span className="sidebar-item-label">
-                    {recentChatLabel(c)}
-                    <span className="sidebar-item-sub">{project}</span>
-                  </span>
-                  <button
-                    aria-label={`Delete ${recentChatLabel(c)}`}
-                    className="sidebar-item-delete"
-                    disabled={deleteMutation.isPending}
-                    onClick={(e) => handleDeleteChat(e, c.id)}
-                    title="Delete chat"
-                    type="button"
-                  >
-                    <Trash2 size={14} strokeWidth={1.8} />
-                  </button>
-                </Link>
-              );
-            })}
-          </>
-        )}
-
         <div className="sidebar-divider" />
 
         {activeProjectSubject && activeProjectPath && (

@@ -14,6 +14,7 @@ from app.core.rate_limit import rate_limit_ip
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db_session as get_db
 from app.models.user import User
+from app.services.tts_service import validate_tutor_voice
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -47,6 +48,7 @@ class TutorPreferencesRequest(BaseModel):
     tutor_tone: str
     tutor_style: str
     tutor_instructions: str = ""
+    tutor_voice: str = "nova"
 
 
 class UserResponse(BaseModel):
@@ -59,6 +61,7 @@ class UserResponse(BaseModel):
     tutor_tone: str
     tutor_style: str
     tutor_instructions: str
+    tutor_voice: str
 
     @classmethod
     def from_user(cls, user: User) -> "UserResponse":
@@ -72,6 +75,7 @@ class UserResponse(BaseModel):
             tutor_tone=user.tutor_tone,
             tutor_style=user.tutor_style,
             tutor_instructions=user.tutor_instructions,
+            tutor_voice=user.tutor_voice,
         )
 
 
@@ -168,6 +172,10 @@ async def update_tutor_preferences(
     tutor_tone = body.tutor_tone.strip()
     tutor_style = body.tutor_style.strip()
     tutor_instructions = body.tutor_instructions.strip()
+    try:
+        tutor_voice = validate_tutor_voice(body.tutor_voice)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     if not tutor_name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tutor name is required.")
@@ -184,6 +192,7 @@ async def update_tutor_preferences(
     user.tutor_tone = tutor_tone[:80]
     user.tutor_style = tutor_style[:120]
     user.tutor_instructions = tutor_instructions[:1000]
+    user.tutor_voice = tutor_voice
     await db.commit()
     await db.refresh(user)
 

@@ -162,9 +162,10 @@ Session summaries are generated on demand and cached on the conversation. These 
 The system supports two different visual representations:
 
 - **session diagrams**, which are streamed during chat as Excalidraw-style diagrams and rendered immediately in the UI
+- **session images**, which are streamed during chat as attributed Wikimedia Commons image artifacts when a real photo/reference image is more useful than a generated diagram
 - **project mind maps**, which are generated through a dedicated endpoint and stored on the `project_profiles` table as JSON
 
-This distinction matters because diagrams are ephemeral session artifacts, while mind maps are subject-level persistent planning artifacts.
+This distinction matters because diagrams and images are ephemeral session artifacts, while mind maps are subject-level persistent planning artifacts. Diagrams are best for abstract structure, flows, and relationships; real images are best for concrete visual references such as organisms, places, lab setups, physical objects, or historical artifacts.
 
 ### 6.9 Voice and lecture mode
 
@@ -172,10 +173,15 @@ The system supports:
 
 - speech-to-text with OpenAI Whisper
 - text-to-speech with OpenAI `tts-1-hd`
+- a user-selectable tutor voice stored on the user profile and applied to all generated speech
 - a lecture overlay that turns a tutoring session into a guided notebook-style experience
-- optional browser-native continuous speech recognition for hands-free follow-up questions
+- hands-free voice interruption, with browser echo cancellation plus application-level transcript echo filtering
+- manual stop control for ending the current spoken response without leaving the lecture
+- source rendering for retrieved uploaded-material chunks, including snippets and links back to the source material
+- real image artifacts in chat and lecture mode when the tutor needs a photo/reference visual
+- lecture pace controls, playback-speed controls, and quick actions for "check me" and "show visually"
 
-Lecture mode buffers streamed tutor text into shorter audio chunks and plays them sequentially while collecting notes and diagrams in a live notebook view.
+Lecture mode buffers streamed tutor text into shorter audio chunks and plays them sequentially while collecting notes, diagrams, real images, and source cards in a live notebook view. The voice layer is intentionally interruptible: when the learner starts speaking, the current stream/audio queue is cancelled, the utterance is transcribed, and a new tutor turn is started. This makes lecture mode behave like a real-time tutoring conversation rather than a passive audio player.
 
 ### 6.10 Search and review
 
@@ -388,6 +394,30 @@ Following the landing redesign, three app-wide fixes were made to bring the rest
 **3) Quiz result clarity.** Hardcoded greens/reds (`#15803d`, `#b91c1c`) were swapped for theme tokens (`--success`, `--error`, `--success-bg`, `--error-bg`) and a 4px colored left-border was added to `.quiz-result` so correct/wrong/skipped reads as a strong, glanceable verdict. Header font size bumped to 1rem with a status-colored leading icon.
 
 **4) Audited & confirmed.** Verified that the previously-suspected flashcard-flip-missing issue is a false positive — flips already work via `perspective: 1200px` + `transform-style: preserve-3d` + `rotateY(180deg)`. Likewise, the "dark theme completely broken" finding from the earlier audit was overstated — a duplicate `:root` block at line 2248 of `styles.css` defines a complete dark palette that wins by cascade order, and dark mode was functionally fine; the `[data-theme="dark"]` block I added in the previous pass is now an explicit, lint-friendly override of that implicit dark base rather than a fix for missing styles.
+
+## Decision: Grounded, interruptible lecture mode (2026-05-13)
+
+Lecture mode was extended from "read the generated answer aloud" into a more tutor-like interaction model: grounded sources on screen, learner-controlled pacing, direct visual/checkpoint prompts, and real interruption semantics.
+
+**1) Source rail instead of hidden citations.** The streaming chat endpoint already emits retrieved uploaded-material chunks through a `sources` SSE event. `useLectureSession` now stores those `RetrievedSource` records in session state, and `LectureModeOverlay` renders them in a dedicated source rail with filename, page metadata, snippet, relevance score, and a link back to the material detail page when a subject route is available. This keeps the learner oriented while the tutor is speaking and makes grounding visible without forcing citations into the spoken script.
+
+**2) Pace and playback controls.** Lecture mode now separates pedagogical pace from audio playback speed. Pace (`Concise`, `Normal`, `Deep`) is sent as an instruction on the opening lecture and each follow-up so the model changes explanation depth. Playback speed (`1x`, `1.25x`, `1.5x`) updates the active `HTMLAudioElement.playbackRate` and is also applied to queued speech chunks. This avoids conflating "talk faster" with "teach less deeply."
+
+**3) Real-time interruption and explicit stop.** The browser microphone runs with echo cancellation, noise suppression, automatic gain control, and one-channel audio. `useLectureVoiceInput` watches microphone RMS locally, stops the current tutor audio as soon as speech starts, records only the learner utterance, filters transcripts that look like the tutor's own recent speech, and then sends the clean transcript as the next turn. The manual stop button uses the same cancellation primitives (`AbortController`, generation invalidation, audio queue cleanup), so stopping a response and interrupting by voice are consistent.
+
+**4) Fast teaching actions.** "Check me" sends a prompt that pauses the lecture and asks one focused understanding question. "Show visually" asks the tutor to generate a visual explanation/diagram for the current concept. These are intentionally buttons rather than hidden prompt examples because they represent frequent lecture-mode control moves that should be available without typing.
+
+*Why this architecture.* The implementation keeps lecture mode on top of the existing chat stream, source retrieval, key-idea, diagram, and TTS systems instead of creating a separate lecture backend. That preserves persistence, artifact generation, and RAG behavior while adding a lecture-specific presentation and voice-control layer in the frontend. The tradeoff is that pace preferences are prompt-injected per turn rather than stored as a separate conversation setting; this is simpler and adequate until lectures need persistent per-subject pedagogy profiles.
+
+## Decision: Real image artifacts in chat and lecture (2026-05-13)
+
+The tutor can now call a `find_image` tool when a real photo/reference image would help more than a generated diagram. The tool searches Wikimedia Commons through a dedicated `WebImageService`, emits a streamed `image` event, and renders the same attributed image card in both normal chat and lecture mode.
+
+*Why Wikimedia Commons.* Tutor-response images should be educational references, not decorative stock photography. Wikimedia Commons is a better default because it is public, source-oriented, commonly contains diagrams/photos of academic topics, and exposes creator/license metadata that can be rendered directly in the artifact card. It also avoids coupling response visuals to the Pexels cover-image flow. If Wikimedia search fails, the stream does not fail; the tool returns a "no image displayed" message to the model and the tutor can continue with text or a generated diagram.
+
+*How it differs from diagrams and sources.* Diagrams remain model-generated Excalidraw artifacts for relationships, flows, systems, and abstract concepts. Images are provider-backed media artifacts for concrete visual references. Sources are uploaded-material retrieval snippets that ground claims in the student's files. Keeping these as separate event types (`diagram`, `image`, `sources`) lets the UI present each one with the right affordances and attribution instead of forcing every visual into one generic attachment format.
+
+*Implementation notes.* `AGENT_TOOLS` now includes `find_image(query, caption)`. When the model calls it, `stream_chat()` fetches one image, yields an `image` SSE payload with URL, caption, creator, license, provider, and source links, then sends a LangChain `ToolMessage` back into the second-pass tutor response so the tutor knows whether an image was shown. The frontend adds an `ImageData` stream type, a reusable `ImageArtifactCard`, chat-side `sseImages` rendering, and lecture-side image buffering so images can appear in the live notebook alongside notes and diagrams.
 
 ## Decision: LLM-graded targeted quiz feedback (2026-05-11)
 

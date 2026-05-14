@@ -69,7 +69,12 @@ async def generate_presigned_get(
         safe = filename.replace('"', "")
         params["ResponseContentDisposition"] = f'inline; filename="{safe}"'
     if content_type:
-        params["ResponseContentType"] = content_type
+        # Browsers fall back to a legacy charset for text/* responses with no
+        # explicit charset, which mangles UTF-8 markdown/plaintext into mojibake.
+        if content_type.startswith("text/") and "charset=" not in content_type.lower():
+            params["ResponseContentType"] = f"{content_type}; charset=utf-8"
+        else:
+            params["ResponseContentType"] = content_type
     async with s3_client() as client:
         return await client.generate_presigned_url(
             ClientMethod="get_object",

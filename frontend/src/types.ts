@@ -28,13 +28,26 @@ export interface UserProfile {
   tutor_tone: string;
   tutor_style: string;
   tutor_instructions: string;
+  tutor_voice: TutorVoice;
 }
+
+export type TutorVoice =
+  | "alloy"
+  | "ash"
+  | "coral"
+  | "echo"
+  | "fable"
+  | "nova"
+  | "onyx"
+  | "sage"
+  | "shimmer";
 
 export interface TutorPreferences {
   tutor_name: string;
   tutor_tone: string;
   tutor_style: string;
   tutor_instructions: string;
+  tutor_voice: TutorVoice;
 }
 
 export interface AuthResult {
@@ -189,7 +202,27 @@ export interface ChatDiagramEvent {
   data: DiagramData;
 }
 
-export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent;
+export interface ImageData {
+  id: string;
+  provider_id: string;
+  query: string;
+  caption: string;
+  image_url: string;
+  thumbnail_url: string;
+  creator: string | null;
+  creator_url: string | null;
+  license: string | null;
+  license_url: string | null;
+  source_url: string;
+  source: string;
+}
+
+export interface ChatImageEvent {
+  event: "image";
+  data: ImageData;
+}
+
+export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent | ChatImageEvent;
 
 export interface KeyIdea {
   id: number;

@@ -16,6 +16,7 @@ from app.services import retriever
 from app.services.conversation_service import get_conversation_for_user
 from app.services.llm_service import LLMService
 from app.services.prompt_builder import ChatTurn, build_responses_input
+from app.services.web_image_service import WebImageError, WebImageService
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,33 @@ AGENT_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_image",
+            "description": (
+                "Find a real-world educational stock/web image to show the student. "
+                "Use this when the student asks for a picture/photo, when a real visual reference would help "
+                "more than a generated diagram, or when a lecture asks to show a concrete object, organism, "
+                "historical artifact, place, lab setup, graph-like visual, or visual analogy. "
+                "Do not use this for abstract relationships better represented by create_diagram."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query for the image provider, e.g. 'mitosis microscope slide'.",
+                    },
+                    "caption": {
+                        "type": "string",
+                        "description": "Short student-facing caption explaining why this image is useful.",
+                    },
+                },
+                "required": ["query", "caption"],
+            },
+        },
+    },
 ]
 
 
@@ -205,6 +233,7 @@ async def stream_chat(
     user_id: int,
     user_message: str,
     system_prompt: str,
+    image_service: WebImageService | None = None,
 ) -> AsyncIterator[SseEvent]:
     conv = await get_conversation_for_user(session=session, conversation_id=conversation_id, user_id=user_id)
     subject = conv.subject
@@ -331,6 +360,57 @@ async def stream_chat(
                             "elements": elements,
                             "title": args.get("title"),
                         })
+
+                elif tc["name"] == "find_image":
+                    args = tc["args"]
+                    query = str(args.get("query", "")).strip()
+                    caption = str(args.get("caption", "")).strip()
+                    image_result: dict[str, str] | None = None
+
+                    if image_service is not None and query:
+                        try:
+                            results = await image_service.search_images(query, per_page=1)
+                            image_result = results[0] if results else None
+                        except WebImageError as exc:
+                            logger.info(
+                                "Image search unavailable",
+                                extra={"conversation_id": conversation_id, "user_id": user_id, "error": str(exc)},
+                            )
+                        except Exception as exc:  # noqa: BLE001 - image search must not break tutoring.
+                            logger.warning(
+                                "Image search failed",
+                                extra={"conversation_id": conversation_id, "user_id": user_id, "error": str(exc)},
+                            )
+
+                    if image_result:
+                        artifact_id = str(uuid.uuid4())[:8]
+                        yield SseEvent(event="image", data={
+                            "id": artifact_id,
+                            "provider_id": image_result["id"],
+                            "query": query,
+                            "caption": caption or query,
+                            "image_url": image_result["image_url"],
+                            "thumbnail_url": image_result["thumbnail_url"],
+                            "creator": image_result["creator"],
+                            "creator_url": image_result["creator_url"],
+                            "license": image_result["license"],
+                            "license_url": image_result["license_url"],
+                            "source_url": image_result["source_url"],
+                            "source": image_result["source"],
+                        })
+                        tool_content = f"Image for '{query}' found and displayed to the student."
+                    else:
+                        tool_content = (
+                            f"No suitable image could be displayed for '{query}'."
+                            if query else "No image query was provided, so no image was displayed."
+                        )
+
+                    lc_tool_messages.append(
+                        LCToolMessage(
+                            content=tool_content,
+                            tool_call_id=tc["id"],
+                        )
+                    )
 
                 elif tc["name"] == "save_key_idea":
                     args = tc["args"]

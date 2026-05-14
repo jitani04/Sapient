@@ -18,6 +18,7 @@ from app.services.chat_service import SseEvent, stream_chat
 from app.services.conversation_service import get_conversation_for_user
 from app.services.errors import ConversationNotFoundError
 from app.services.llm_service import LLMService
+from app.services.web_image_service import WebImageService
 
 settings = get_settings()
 router = APIRouter(
@@ -88,6 +89,7 @@ async def stream_chat_endpoint(
         model=settings.llm_model,
         timeout_seconds=settings.llm_timeout_seconds,
     )
+    image_service = WebImageService()
 
     async def event_stream() -> AsyncIterator[str]:
         try:
@@ -98,6 +100,7 @@ async def stream_chat_endpoint(
                 user_id=user_id,
                 user_message=request.message,
                 system_prompt=system_prompt,
+                image_service=image_service,
             )
             async for payload in _with_keepalive(source, settings.keepalive_seconds):
                 yield payload

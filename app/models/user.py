@@ -20,6 +20,7 @@ class User(Base):
     tutor_tone: Mapped[str] = mapped_column(String(80), default="Supportive", server_default="Supportive", nullable=False)
     tutor_style: Mapped[str] = mapped_column(String(120), default="Socratic guide", server_default="Socratic guide", nullable=False)
     tutor_instructions: Mapped[str] = mapped_column(String(1000), default="", server_default="", nullable=False)
+    tutor_voice: Mapped[str] = mapped_column(String(32), default="nova", server_default="nova", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="user")

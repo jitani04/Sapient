@@ -2,6 +2,15 @@ import { useRef, useState } from "react";
 
 import { RateLimitError, transcribeAudio } from "./api";
 
+const MIC_CONSTRAINTS: MediaStreamConstraints = {
+  audio: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    channelCount: 1,
+  },
+};
+
 export function useMicrophone(onTranscript: (text: string) => void) {
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -13,7 +22,7 @@ export function useMicrophone(onTranscript: (text: string) => void) {
     setError(null);
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
     } catch {
       setError("Microphone access denied.");
       return;

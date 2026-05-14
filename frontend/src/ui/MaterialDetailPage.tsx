@@ -3,6 +3,16 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { deleteMaterial, getMaterialPreviewUrl, listConversations, listMaterials } from "../api";
 import { normalizeSubject } from "../subjects";
+import { MarkdownText } from "./MarkdownText";
+
+function isMarkdownMime(mime: string): boolean {
+  const lower = mime.toLowerCase();
+  return lower.startsWith("text/markdown") || lower === "text/x-markdown";
+}
+
+function isPlainTextMime(mime: string): boolean {
+  return mime.toLowerCase().startsWith("text/") && !isMarkdownMime(mime);
+}
 
 function formatDateTime(value: string | null): string {
   if (!value) return "Not yet";
@@ -52,6 +62,19 @@ export function MaterialDetailPage() {
       return Math.max(60_000, (expiresIn - 60) * 1000);
     },
     staleTime: 30_000,
+  });
+
+  const previewMime = previewQuery.data?.mime_type ?? material?.mime_type ?? "";
+  const isTextPreview = isMarkdownMime(previewMime) || isPlainTextMime(previewMime);
+  const textContentQuery = useQuery({
+    queryKey: ["material-preview-text", parsedMaterialId, previewQuery.data?.url],
+    enabled: Boolean(previewQuery.data?.url) && isTextPreview,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const resp = await fetch(previewQuery.data!.url);
+      if (!resp.ok) throw new Error(`Could not load file (${resp.status}).`);
+      return resp.text();
+    },
   });
 
   const conversationsQuery = useQuery({
@@ -195,12 +218,40 @@ export function MaterialDetailPage() {
           ) : null}
           {previewQuery.data ? (
             <div className="material-preview-frame">
-              <iframe
-                key={previewQuery.data.url}
-                src={previewQuery.data.url}
-                title={`Preview of ${material.filename}`}
-                style={{ width: "100%", height: "70vh", border: "1px solid var(--border, #e2e2e2)", borderRadius: "8px", background: "#fff" }}
-              />
+              {isTextPreview ? (
+                <div
+                  style={{
+                    width: "100%",
+                    maxHeight: "70vh",
+                    overflow: "auto",
+                    border: "1px solid var(--border, #e2e2e2)",
+                    borderRadius: "8px",
+                    background: "#fff",
+                    padding: "1rem 1.25rem",
+                  }}
+                >
+                  {textContentQuery.isLoading ? (
+                    <p className="muted">Loading file...</p>
+                  ) : textContentQuery.isError ? (
+                    <p className="error-text">
+                      Could not load file. {(textContentQuery.error as Error)?.message ?? ""}
+                    </p>
+                  ) : isMarkdownMime(previewMime) ? (
+                    <MarkdownText className="markdown-body">{textContentQuery.data ?? ""}</MarkdownText>
+                  ) : (
+                    <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>
+                      {textContentQuery.data ?? ""}
+                    </pre>
+                  )}
+                </div>
+              ) : (
+                <iframe
+                  key={previewQuery.data.url}
+                  src={previewQuery.data.url}
+                  title={`Preview of ${material.filename}`}
+                  style={{ width: "100%", height: "70vh", border: "1px solid var(--border, #e2e2e2)", borderRadius: "8px", background: "#fff" }}
+                />
+              )}
               <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
                 <a className="button button-secondary" href={previewQuery.data.url} target="_blank" rel="noreferrer">
                   Open in new tab

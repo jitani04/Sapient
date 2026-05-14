@@ -7,11 +7,23 @@ import { clearToken } from "../auth";
 import { ThemeToggle } from "./ThemeToggle";
 import { useReadingPrefs } from "../ReadingPrefsContext";
 import type { FontSize, FontFamily } from "../readingPrefs";
+import type { TutorVoice } from "../types";
 
 const POMODORO_KEY = "kp-pomodoro";
 
 const TONE_OPTIONS = ["Supportive", "Direct", "Encouraging", "Calm", "Playful"];
 const STYLE_OPTIONS = ["Socratic guide", "Step-by-step coach", "Exam prep trainer", "Subject mentor", "Concept explainer"];
+const VOICE_OPTIONS: { value: TutorVoice; label: string; description: string }[] = [
+  { value: "nova", label: "Nova", description: "Balanced and clear" },
+  { value: "alloy", label: "Alloy", description: "Neutral and polished" },
+  { value: "ash", label: "Ash", description: "Calm and grounded" },
+  { value: "coral", label: "Coral", description: "Warm and upbeat" },
+  { value: "echo", label: "Echo", description: "Crisp and direct" },
+  { value: "fable", label: "Fable", description: "Soft and storytelling" },
+  { value: "onyx", label: "Onyx", description: "Deep and steady" },
+  { value: "sage", label: "Sage", description: "Measured and thoughtful" },
+  { value: "shimmer", label: "Shimmer", description: "Bright and energetic" },
+];
 
 const FONT_SIZE_OPTIONS: { label: string; value: FontSize }[] = [
   { label: "Small", value: "small" },
@@ -36,6 +48,7 @@ export function SettingsPage() {
   const [tutorTone, setTutorTone] = useState("Supportive");
   const [tutorStyle, setTutorStyle] = useState("Socratic guide");
   const [tutorInstructions, setTutorInstructions] = useState("");
+  const [tutorVoice, setTutorVoice] = useState<TutorVoice>("nova");
   const { fontSize, setFontSize, fontFamily, setFontFamily, bionic, setBionic } = useReadingPrefs();
   const [pomodoroEnabled, setPomodoroEnabled] = useState(() => localStorage.getItem(POMODORO_KEY) === "true");
 
@@ -54,6 +67,7 @@ export function SettingsPage() {
     setTutorTone(user.tutor_tone || "Supportive");
     setTutorStyle(user.tutor_style || "Socratic guide");
     setTutorInstructions(user.tutor_instructions || "");
+    setTutorVoice(user.tutor_voice || "nova");
   }, [user]);
 
   function handleSignOut() {
@@ -74,6 +88,7 @@ export function SettingsPage() {
         tutor_tone: tutorTone,
         tutor_style: tutorStyle,
         tutor_instructions: tutorInstructions,
+        tutor_voice: tutorVoice,
       });
       queryClient.setQueryData(["me"], updatedUser);
       await queryClient.invalidateQueries({ queryKey: ["me"] });
@@ -174,11 +189,31 @@ export function SettingsPage() {
               />
             </label>
 
+            <div className="flow-field">
+              <span>Read-aloud voice</span>
+              <div className="settings-choice-grid">
+                {VOICE_OPTIONS.map((option) => (
+                  <button
+                    className={`settings-choice ${tutorVoice === option.value ? "selected" : ""}`}
+                    key={option.value}
+                    onClick={() => setTutorVoice(option.value)}
+                    type="button"
+                  >
+                    <strong>{option.label}</strong>
+                    <span>{option.description}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="settings-copy">
+                This controls the voice used when you tap <strong>Read aloud</strong> on tutor responses.
+              </p>
+            </div>
+
             <div className="tutor-preview">
               <div className="msg-avatar msg-avatar-ai">{tutorName.slice(0, 2).toUpperCase() || "KP"}</div>
               <div>
                 <strong>{tutorName || "Sapient"}</strong>
-                <p>{tutorTone} · {tutorStyle}</p>
+                <p>{tutorTone} · {tutorStyle} · {VOICE_OPTIONS.find((option) => option.value === tutorVoice)?.label ?? tutorVoice}</p>
               </div>
             </div>
 

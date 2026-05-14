@@ -6,10 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from openai import AsyncOpenAI
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_user_id
 from app.core.config import get_settings
 from app.core.rate_limit import rate_limit_user
+from app.db.session import get_db_session
+from app.models.user import User
+from app.services.tts_service import DEFAULT_TTS_MODEL, normalize_tutor_voice
 
 logger = logging.getLogger(__name__)
 _settings = get_settings()
@@ -19,6 +23,7 @@ router = APIRouter(
 )
 
 UserDep = Annotated[int, Depends(get_user_id)]
+DbDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 _MD_PATTERN = re.compile(r"\*{1,2}([^*]+)\*{1,2}|`([^`]+)`|#{1,6}\s+")
 
@@ -38,6 +43,7 @@ class TTSRequest(BaseModel):
 async def text_to_speech(
     body: TTSRequest,
     user_id: UserDep,
+    session: DbDep,
 ) -> Response:
     settings = get_settings()
     if not settings.openai_tts_api_key:
@@ -52,12 +58,17 @@ async def text_to_speech(
 
     # OpenAI TTS max input is 4096 characters
     clean = clean[:4096]
+    user = await session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    voice = normalize_tutor_voice(user.tutor_voice, fallback=settings.openai_tts_voice)
 
     client = AsyncOpenAI(api_key=settings.openai_tts_api_key)
     try:
         tts_response = await client.audio.speech.create(
-            model="tts-1-hd",
-            voice=settings.openai_tts_voice,  # type: ignore[arg-type]
+            model=DEFAULT_TTS_MODEL,
+            voice=voice,  # type: ignore[arg-type]
             input=clean,
             response_format="mp3",
         )
