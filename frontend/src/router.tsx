@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter, useParams } from "react-router-dom";
 
 import { AppLayout } from "./ui/AppLayout";
+import { CalendarPage } from "./ui/CalendarPage";
 import { ChatPage } from "./ui/ChatPage";
 import { DashboardPage } from "./ui/DashboardPage";
 import { FlashcardsPage } from "./ui/FlashcardsPage";
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { path: "/dashboard", element: <DashboardPage /> },
+          { path: "/calendar", element: <CalendarPage /> },
           { path: "/projects/:subject", element: <ProjectPage /> },
           { path: "/projects/:subject/setup", element: <ProjectSetupPage /> },
           { path: "/projects/:subject/materials", element: <MaterialsPage /> },

@@ -13,11 +13,15 @@ from app.services.material_service import (
 
 def test_validate_material_filename_rejects_unsupported_types() -> None:
     with pytest.raises(ValueError):
-        validate_material_filename("slides.docx")
+        validate_material_filename("spreadsheet.xlsx")
 
 
 def test_validate_material_filename_accepts_pptx() -> None:
     validate_material_filename("lecture-slides.pptx")
+
+
+def test_validate_material_filename_accepts_docx() -> None:
+    validate_material_filename("study-guide.docx")
 
 
 @pytest.mark.asyncio
@@ -58,6 +62,27 @@ async def test_extract_material_blocks_reads_pptx_slide_text(tmp_path: Path) -> 
     assert len(blocks) == 1
     assert blocks[0].text == "Photosynthesis converts light into chemical energy."
     assert blocks[0].page_number == 1
+
+
+@pytest.mark.asyncio
+async def test_extract_material_blocks_reads_docx_text(tmp_path: Path) -> None:
+    path = tmp_path / "study-guide.docx"
+    document_xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>Fine art</w:t></w:r></w:p>
+        <w:p><w:r><w:t>is created for aesthetic or intellectual purposes.</w:t></w:r></w:p>
+      </w:body>
+    </w:document>
+    """
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", document_xml)
+
+    blocks = await extract_material_blocks(path)
+
+    assert len(blocks) == 1
+    assert blocks[0].text == "Fine art is created for aesthetic or intellectual purposes."
+    assert blocks[0].page_number is None
 
 
 def test_chunk_blocks_preserve_order_and_overlap() -> None:

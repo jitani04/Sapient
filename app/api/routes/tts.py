@@ -37,6 +37,7 @@ def _strip_markdown(text: str) -> str:
 
 class TTSRequest(BaseModel):
     text: str
+    voice: str | None = None
 
 
 @router.post("/tts")
@@ -62,7 +63,8 @@ async def text_to_speech(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    voice = normalize_tutor_voice(user.tutor_voice, fallback=settings.openai_tts_voice)
+    voice_source = body.voice or user.tutor_voice
+    voice = normalize_tutor_voice(voice_source, fallback=settings.openai_tts_voice)
 
     client = AsyncOpenAI(api_key=settings.openai_tts_api_key)
     try:

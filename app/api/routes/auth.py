@@ -24,6 +24,13 @@ _auth_rate_limit = Depends(rate_limit_ip("auth", _auth_settings.rate_limit_auth_
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 
 
+def display_tutor_name(value: str | None) -> str:
+    clean = (value or "").strip()
+    if clean.lower() == "knowledgepal":
+        return "Sapient"
+    return clean or "Sapient"
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
@@ -71,7 +78,7 @@ class UserResponse(BaseModel):
             name=user.name,
             use_case=user.use_case,
             onboarding_complete=user.onboarding_complete,
-            tutor_name=user.tutor_name,
+            tutor_name=display_tutor_name(user.tutor_name),
             tutor_tone=user.tutor_tone,
             tutor_style=user.tutor_style,
             tutor_instructions=user.tutor_instructions,
@@ -188,7 +195,7 @@ async def update_tutor_preferences(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    user.tutor_name = tutor_name[:80]
+    user.tutor_name = display_tutor_name(tutor_name)[:80]
     user.tutor_tone = tutor_tone[:80]
     user.tutor_style = tutor_style[:120]
     user.tutor_instructions = tutor_instructions[:1000]

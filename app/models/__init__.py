@@ -1,4 +1,5 @@
 from app.models.conversation import Conversation
+from app.models.assignment import Assignment, CalendarFeed
 from app.models.key_idea import KeyIdea
 from app.models.material import Material
 from app.models.material_chunk import MaterialChunk
@@ -11,6 +12,8 @@ from app.models.user import User
 
 __all__ = [
     "User",
+    "Assignment",
+    "CalendarFeed",
     "Conversation",
     "Message",
     "MessageFeedback",

@@ -48,10 +48,15 @@ export function ArtifactsPanel({ conversationId, keyIdeas, onClose, onIdeaDelete
           {keyIdeas.length === 0 ? (
             <p className="artifacts-empty">Key ideas will appear here as you learn.</p>
           ) : (
-            keyIdeas.map((idea) => (
-              <div key={idea.id} className="key-idea-item">
-                <div className="key-idea-top">
-                  <span className="key-idea-concept">{idea.concept}</span>
+            <ul className="key-idea-list">
+              {keyIdeas.map((idea) => (
+                <li key={idea.id} className="key-idea-bullet">
+                  <div className="key-idea-bullet-text">
+                    <span className="key-idea-concept">{idea.concept}</span>
+                    {idea.summary && idea.summary !== idea.concept ? (
+                      <span className="key-idea-summary"> — {idea.summary}</span>
+                    ) : null}
+                  </div>
                   <button
                     className="key-idea-delete"
                     onClick={() => void handleDelete(idea.id)}
@@ -60,10 +65,9 @@ export function ArtifactsPanel({ conversationId, keyIdeas, onClose, onIdeaDelete
                   >
                     ×
                   </button>
-                </div>
-                <p className="key-idea-summary">{idea.summary}</p>
-              </div>
-            ))
+                </li>
+              ))}
+            </ul>
           )}
         </div>
 

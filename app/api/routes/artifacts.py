@@ -34,6 +34,8 @@ class KeyIdeaRead(BaseModel):
     sr_repetitions: int
     sr_due_date: str
     created_at: str
+    artifact_type: str | None = None
+    artifact_data: dict[str, Any] | None = None
 
     model_config = {"from_attributes": True}
 
@@ -47,7 +49,25 @@ class KeyIdeaRead(BaseModel):
             sr_repetitions=obj.sr_repetitions,
             sr_due_date=obj.sr_due_date.isoformat(),
             created_at=obj.created_at.isoformat(),
+            artifact_type=obj.artifact_type,
+            artifact_data=obj.artifact_data,
         )
+
+
+_ALLOWED_ARTIFACT_TYPES = {"text", "diagram", "image"}
+
+
+class KeyIdeaCreate(BaseModel):
+    concept: str
+    summary: str
+    subject: str | None = None
+    artifact_type: str | None = None
+    artifact_data: dict[str, Any] | None = None
+
+
+class KeyIdeaUpdate(BaseModel):
+    concept: str
+    summary: str
 
 
 class SessionSummary(BaseModel):
@@ -55,6 +75,52 @@ class SessionSummary(BaseModel):
     struggled_with: list[str]
     key_concepts: list[str]
     next_review: list[str]
+
+
+def _clean_note_field(value: str, field_name: str, max_length: int) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{field_name} is required.",
+        )
+    if len(cleaned) > max_length:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{field_name} must be {max_length} characters or fewer.",
+        )
+    return cleaned
+
+
+async def _get_or_create_manual_notes_conversation(
+    session: AsyncSession,
+    user_id: int,
+    subject: str | None,
+) -> Conversation:
+    clean_subject = subject.strip() if subject and subject.strip() else None
+    stmt = select(Conversation).where(
+        Conversation.user_id == user_id,
+        Conversation.title == "Manual notes",
+        Conversation.title_manually_edited.is_(True),
+    )
+    if clean_subject:
+        stmt = stmt.where(Conversation.subject == clean_subject)
+    else:
+        stmt = stmt.where(Conversation.subject.is_(None))
+    result = await session.execute(stmt.order_by(Conversation.id.asc()).limit(1))
+    conversation = result.scalar_one_or_none()
+    if conversation:
+        return conversation
+
+    conversation = Conversation(
+        user_id=user_id,
+        subject=clean_subject,
+        title="Manual notes",
+        title_manually_edited=True,
+    )
+    session.add(conversation)
+    await session.flush()
+    return conversation
 
 
 @router.get("/conversations/{conversation_id}/key-ideas", response_model=list[KeyIdeaRead])
@@ -88,6 +154,54 @@ async def list_all_key_ideas(
     stmt = stmt.order_by(KeyIdea.created_at.desc())
     result = await session.execute(stmt)
     return [KeyIdeaRead.from_orm(k) for k in result.scalars()]
+
+
+@router.post("/key-ideas", response_model=KeyIdeaRead, status_code=status.HTTP_201_CREATED)
+async def create_key_idea(
+    payload: KeyIdeaCreate,
+    user_id: UserDep,
+    session: DbDep,
+) -> KeyIdeaRead:
+    concept = _clean_note_field(payload.concept, "Note title", 255)
+    summary = _clean_note_field(payload.summary, "Note body", 10_000)
+    subject = payload.subject.strip() if payload.subject and payload.subject.strip() else None
+    artifact_type = payload.artifact_type
+    if artifact_type is not None and artifact_type not in _ALLOWED_ARTIFACT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"artifact_type must be one of {sorted(_ALLOWED_ARTIFACT_TYPES)}.",
+        )
+    conversation = await _get_or_create_manual_notes_conversation(session, user_id, subject)
+    idea = KeyIdea(
+        user_id=user_id,
+        conversation_id=conversation.id,
+        subject=subject,
+        concept=concept,
+        summary=summary,
+        artifact_type=artifact_type,
+        artifact_data=payload.artifact_data,
+    )
+    session.add(idea)
+    await session.commit()
+    await session.refresh(idea)
+    return KeyIdeaRead.from_orm(idea)
+
+
+@router.patch("/key-ideas/{idea_id}", response_model=KeyIdeaRead)
+async def update_key_idea(
+    idea_id: int,
+    payload: KeyIdeaUpdate,
+    user_id: UserDep,
+    session: DbDep,
+) -> KeyIdeaRead:
+    idea = await session.get(KeyIdea, idea_id)
+    if not idea or idea.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found.")
+    idea.concept = _clean_note_field(payload.concept, "Note title", 255)
+    idea.summary = _clean_note_field(payload.summary, "Note body", 10_000)
+    await session.commit()
+    await session.refresh(idea)
+    return KeyIdeaRead.from_orm(idea)
 
 
 @router.post("/key-ideas/{idea_id}/promote", response_model=KeyIdeaRead)

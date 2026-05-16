@@ -1,9 +1,7 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 
-import { getCurrentUser, updateTutorPreferences } from "../api";
-import { clearToken } from "../auth";
+import { fetchSpeech, getCurrentUser, updateTutorPreferences } from "../api";
 import { ThemeToggle } from "./ThemeToggle";
 import { useReadingPrefs } from "../ReadingPrefsContext";
 import type { FontSize, FontFamily } from "../readingPrefs";
@@ -74,7 +72,6 @@ function Switch({
 }
 
 export function SettingsPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: user } = useQuery({ queryKey: ["me"], queryFn: getCurrentUser });
   const [tab, setTab] = useState<Tab>("tutor");
@@ -83,6 +80,9 @@ export function SettingsPage() {
   const [tutorStyle, setTutorStyle] = useState("Socratic guide");
   const [tutorInstructions, setTutorInstructions] = useState("");
   const [tutorVoice, setTutorVoice] = useState<TutorVoice>("nova");
+  const [previewingVoice, setPreviewingVoice] = useState<TutorVoice | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
   const { fontSize, setFontSize, fontFamily, setFontFamily, bionic, setBionic } = useReadingPrefs();
   const [pomodoroEnabled, setPomodoroEnabled] = useState(() => localStorage.getItem(POMODORO_KEY) === "true");
   const [pomodoroMinutes, setPomodoroMinutesState] = useState(() => readPomodoroMinutes());
@@ -111,10 +111,40 @@ export function SettingsPage() {
     setTutorVoice(user.tutor_voice || "nova");
   }, [user]);
 
-  function handleSignOut() {
-    clearToken();
-    queryClient.clear();
-    navigate("/");
+  useEffect(() => {
+    return () => {
+      previewAudioRef.current?.pause();
+      previewAudioRef.current = null;
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  async function handleSelectVoice(voice: TutorVoice) {
+    setTutorVoice(voice);
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+    }
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPreviewingVoice(voice);
+    try {
+      const name = tutorName.trim() || "Sapient";
+      const url = await fetchSpeech(`Hi, I'm ${name}. Here's how I sound.`, voice);
+      previewUrlRef.current = url;
+      const audio = new Audio(url);
+      previewAudioRef.current = audio;
+      audio.onended = () => setPreviewingVoice((current) => (current === voice ? null : current));
+      audio.onerror = () => setPreviewingVoice((current) => (current === voice ? null : current));
+      await audio.play();
+    } catch {
+      setPreviewingVoice((current) => (current === voice ? null : current));
+    }
   }
 
   async function handleTutorSubmit(event: FormEvent) {
@@ -146,7 +176,6 @@ export function SettingsPage() {
       <div className="page-header">
         <div className="page-header-text">
           <h1 className="page-title">Settings</h1>
-          <p className="page-subtitle">Adjust account, appearance, and study session preferences.</p>
         </div>
       </div>
 
@@ -235,13 +264,14 @@ export function SettingsPage() {
               <div className="settings-choice-grid">
                 {VOICE_OPTIONS.map((option) => (
                   <button
-                    className={`settings-choice ${tutorVoice === option.value ? "selected" : ""}`}
+                    className={`settings-choice ${tutorVoice === option.value ? "selected" : ""} ${previewingVoice === option.value ? "previewing" : ""}`}
                     key={option.value}
-                    onClick={() => setTutorVoice(option.value)}
+                    onClick={() => void handleSelectVoice(option.value)}
                     type="button"
                   >
                     <strong>{option.label}</strong>
                     <span>{option.description}</span>
+                    {previewingVoice === option.value && <span className="voice-preview-tag">Playing…</span>}
                   </button>
                 ))}
               </div>
@@ -272,22 +302,25 @@ export function SettingsPage() {
 
       {tab === "preferences" && (
         <div className="settings-grid">
-          <div className="content-card">
+          <div className="content-card prefs-card">
             <div className="content-card-title">Appearance</div>
-            <div className="settings-control">
+
+            <div className="prefs-row">
+              <div className="prefs-row-label">
+                <span>Theme</span>
+                <p className="settings-copy">Light or dark across the app.</p>
+              </div>
               <ThemeToggle variant="icon" />
             </div>
-          </div>
 
-          <div className="content-card">
-            <div className="content-card-title">Reading</div>
-
-            <div className="flow-field">
-              <span>Font size</span>
-              <div className="settings-choice-grid">
+            <div className="prefs-row">
+              <div className="prefs-row-label">
+                <span>Font size</span>
+              </div>
+              <div className="prefs-pills">
                 {FONT_SIZE_OPTIONS.map(({ label, value }) => (
                   <button
-                    className={`settings-choice ${fontSize === value ? "selected" : ""}`}
+                    className={`prefs-pill ${fontSize === value ? "selected" : ""}`}
                     key={value}
                     onClick={() => setFontSize(value)}
                     type="button"
@@ -298,12 +331,14 @@ export function SettingsPage() {
               </div>
             </div>
 
-            <div className="flow-field">
-              <span>Font style</span>
-              <div className="settings-choice-grid">
+            <div className="prefs-row">
+              <div className="prefs-row-label">
+                <span>Font style</span>
+              </div>
+              <div className="prefs-pills">
                 {FONT_FAMILY_OPTIONS.map(({ label, value }) => (
                   <button
-                    className={`settings-choice ${fontFamily === value ? "selected" : ""}`}
+                    className={`prefs-pill ${fontFamily === value ? "selected" : ""}`}
                     key={value}
                     onClick={() => setFontFamily(value)}
                     type="button"
@@ -314,81 +349,55 @@ export function SettingsPage() {
               </div>
             </div>
 
-            <div className="settings-row" style={{ alignItems: "flex-start", gap: "1rem" }}>
-              <div>
-                <span style={{ fontWeight: 500 }}>Bionic reading</span>
-                <p className="settings-copy" style={{ marginTop: "0.2rem" }}>
-                  Bolds the first half of each word to help your eyes move faster across text.
-                </p>
+            <div className="prefs-row">
+              <div className="prefs-row-label">
+                <span>Bionic reading</span>
+                <p className="settings-copy">Bolds the first half of each word to help your eyes move faster.</p>
               </div>
               <Switch checked={bionic} onChange={() => setBionic(!bionic)} label="Toggle bionic reading" />
             </div>
           </div>
 
-          <div className="content-card">
-            <div className="content-card-title">Focus mode</div>
-            <div className="settings-row" style={{ alignItems: "flex-start", gap: "1rem" }}>
-              <div>
-                <span style={{ fontWeight: 500 }}>Pomodoro timer</span>
-                <p className="settings-copy" style={{ marginTop: "0.2rem" }}>
-                  Countdown timer pinned to each study session. When it hits zero, you get a break reminder.
-                </p>
+          <div className="prefs-side">
+            <div className="content-card prefs-card">
+              <div className="content-card-title">Focus mode</div>
+              <div className="prefs-row">
+                <div className="prefs-row-label">
+                  <span>Pomodoro timer</span>
+                  <p className="settings-copy">Countdown timer in each study session, with a break reminder when it hits zero.</p>
+                </div>
+                <Switch checked={pomodoroEnabled} onChange={togglePomodoro} label="Toggle pomodoro timer" />
               </div>
-              <Switch checked={pomodoroEnabled} onChange={togglePomodoro} label="Toggle pomodoro timer" />
+              {pomodoroEnabled && (
+                <div className="prefs-row">
+                  <div className="prefs-row-label">
+                    <span>Duration</span>
+                  </div>
+                  <div className="prefs-pills">
+                    {POMODORO_MINUTE_PRESETS.map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        className={`prefs-pill ${pomodoroMinutes === m ? "selected" : ""}`}
+                        onClick={() => setPomodoroMinutes(m)}
+                      >
+                        {m} min
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      min={1}
+                      max={180}
+                      value={pomodoroMinutes}
+                      onChange={(e) => setPomodoroMinutes(Number(e.target.value))}
+                      className="prefs-pill prefs-pill-input"
+                      aria-label="Custom pomodoro duration in minutes"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-            {pomodoroEnabled && (
-              <div className="settings-row" style={{ alignItems: "flex-start", gap: "1rem", marginTop: "0.75rem" }}>
-                <div>
-                  <span style={{ fontWeight: 500 }}>Duration</span>
-                  <p className="settings-copy" style={{ marginTop: "0.2rem" }}>
-                    How long each focus block lasts. The timer in the study session header counts down from this.
-                  </p>
-                </div>
-                <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", flexShrink: 0, alignItems: "center" }}>
-                  {POMODORO_MINUTE_PRESETS.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      className={`settings-choice ${pomodoroMinutes === m ? "selected" : ""}`}
-                      onClick={() => setPomodoroMinutes(m)}
-                    >
-                      {m} min
-                    </button>
-                  ))}
-                  <input
-                    type="number"
-                    min={1}
-                    max={180}
-                    value={pomodoroMinutes}
-                    onChange={(e) => setPomodoroMinutes(Number(e.target.value))}
-                    className="form-input"
-                    style={{ width: "5.5rem", padding: "0.4rem 0.6rem" }}
-                    aria-label="Custom pomodoro duration in minutes"
-                  />
-                  <span className="settings-copy" style={{ margin: 0 }}>min</span>
-                </div>
-              </div>
-            )}
-          </div>
 
-          <div className="content-card">
-            <div className="content-card-title">Account</div>
-            <div className="settings-row">
-              <span>Signed in as</span>
-              <strong>{user?.email ?? "Loading…"}</strong>
-            </div>
-            <div className="settings-row">
-              <span>Display name</span>
-              <strong>{user?.name ?? "Not set"}</strong>
-            </div>
-            <div className="settings-actions">
-              <button className="button button-secondary" onClick={() => navigate("/profile")} type="button">
-                Edit profile
-              </button>
-              <button className="button button-secondary" onClick={handleSignOut} type="button">
-                Sign out
-              </button>
-            </div>
           </div>
         </div>
       )}

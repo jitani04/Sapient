@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowUp, FileText, FolderOpen, Pause, Play, Plus, RotateCcw } from "lucide-react";
+import { ArrowUp, Bookmark, BookmarkCheck, FileText, FolderOpen, Pause, Play, Plus, RotateCcw } from "lucide-react";
 
-import { RateLimitError, createConversation, deleteConversation, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listMaterials, streamChat, submitFeedback, uploadMaterial } from "../api";
+import { RateLimitError, createConversation, createKeyIdea, deleteConversation, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listMaterials, streamChat, submitFeedback, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
-import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, Material, Message, MessageTrace, QuizData, RetrievedSource } from "../types";
+import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, QuizData, RetrievedSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
@@ -224,8 +224,8 @@ function readPomodoroDurationSeconds(): number {
 
 const ATTACHMENT_READY_TIMEOUT_MS = 25_000;
 const ATTACHMENT_POLL_INTERVAL_MS = 1_500;
-const SUPPORTED_ATTACHMENT_SUFFIXES = [".pdf", ".pptx", ".txt", ".md"];
-const SUPPORTED_ATTACHMENT_ACCEPT = ".pdf,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/x-markdown";
+const SUPPORTED_ATTACHMENT_SUFFIXES = [".pdf", ".pptx", ".docx", ".txt", ".md"];
+const SUPPORTED_ATTACHMENT_ACCEPT = ".pdf,.pptx,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/x-markdown";
 
 type AttachmentStatus = "queued" | "uploading" | "processing" | "ready" | "failed";
 
@@ -317,6 +317,15 @@ export function ChatPage() {
   const [sseKeyIdeas, setSseKeyIdeas] = useState<KeyIdea[]>([]);
   const [sseDiagrams, setSseDiagrams] = useState<DiagramData[]>([]);
   const [sseImages, setSseImages] = useState<ImageData[]>([]);
+  // Artifacts streamed during the current assistant turn, awaiting an `end`
+  // event so we can tag them with the assistant_message_id and render inline.
+  const [savedSnippetKeys, setSavedSnippetKeys] = useState<Set<string>>(new Set());
+  const [pendingDiagrams, setPendingDiagrams] = useState<DiagramData[]>([]);
+  const [pendingImages, setPendingImages] = useState<ImageData[]>([]);
+  const [pendingQuizzes, setPendingQuizzes] = useState<QuizData[]>([]);
+  const [messageDiagrams, setMessageDiagrams] = useState<Record<number, DiagramData[]>>({});
+  const [messageImages, setMessageImages] = useState<Record<number, ImageData[]>>({});
+  const [messageQuizzes, setMessageQuizzes] = useState<Record<number, QuizData[]>>({});
   const [showNotes, setShowNotes] = useState(false);
   const [showMaterials, setShowMaterials] = useState(false);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
@@ -357,8 +366,10 @@ export function ChatPage() {
   const historicalQuizzes: QuizData[] = (quizzesQuery.data ?? []).map((q) => ({
     quiz_id: q.id,
     question: q.question,
+    concept: q.concept,
     quiz_type: q.quiz_type as QuizData["quiz_type"],
     options: q.options,
+    message_id: q.message_id,
   }));
 
   const createMutation = useMutation({
@@ -440,6 +451,13 @@ export function ChatPage() {
     setSseQuizzes([]);
     setSseKeyIdeas([]);
     setSseDiagrams([]);
+    setSseImages([]);
+    setPendingDiagrams([]);
+    setPendingImages([]);
+    setPendingQuizzes([]);
+    setMessageDiagrams({});
+    setMessageImages({});
+    setMessageQuizzes({});
     setShowNotes(false);
   }, [conversationId]);
 
@@ -465,7 +483,7 @@ export function ChatPage() {
     const unsupportedCount = files.length - supported.length;
     setAttachmentError(
       unsupportedCount > 0
-        ? "Only PDF, PPTX, TXT, and MD attachments are supported."
+        ? "Only PDF, PPTX, DOCX, TXT, and MD attachments are supported."
         : null,
     );
 
@@ -615,6 +633,11 @@ export function ChatPage() {
   }
 
   function handleQuizAnswered(result: AttemptResult, answer: string) {
+    if (context?.subject) {
+      void queryClient.invalidateQueries({ queryKey: ["project-profile", context.subject] });
+      void queryClient.invalidateQueries({ queryKey: ["project-progress", context.subject] });
+      void queryClient.invalidateQueries({ queryKey: ["project-profiles"] });
+    }
     const msg = result.is_correct
       ? `I answered "${answer}" — that was correct!`
       : `I answered "${answer}" but got it wrong. The correct answer was "${result.correct_answer}". Can you explain why?`;
@@ -622,19 +645,116 @@ export function ChatPage() {
   }
 
   function handleQuizSkipped(result: AttemptResult) {
+    if (context?.subject) {
+      void queryClient.invalidateQueries({ queryKey: ["project-profile", context.subject] });
+      void queryClient.invalidateQueries({ queryKey: ["project-progress", context.subject] });
+      void queryClient.invalidateQueries({ queryKey: ["project-profiles"] });
+    }
     void send(`I skipped that quiz question. The correct answer was "${result.correct_answer}". Can you explain it before we move on?`);
+  }
+
+  async function saveSnippetToNotes(args: {
+    key: string;
+    concept: string;
+    summary: string;
+    artifactType: "text" | "diagram" | "image";
+    artifactData: KeyIdeaArtifactData;
+  }) {
+    if (savedSnippetKeys.has(args.key)) return;
+    try {
+      const idea = await createKeyIdea({
+        concept: args.concept,
+        summary: args.summary,
+        subject: context?.subject ?? null,
+        artifact_type: args.artifactType,
+        artifact_data: args.artifactData,
+      });
+      setSavedSnippetKeys((prev) => {
+        const next = new Set(prev);
+        next.add(args.key);
+        return next;
+      });
+      // Make the new note appear in the side panel immediately.
+      setSseKeyIdeas((existing) => [...existing, idea]);
+      setShowNotes(true);
+      if (conversationId !== null) {
+        void queryClient.invalidateQueries({ queryKey: ["key-ideas", conversationId] });
+      }
+      void queryClient.invalidateQueries({ queryKey: ["all-key-ideas"] });
+    } catch (err) {
+      console.error("Save to notes failed", err);
+    }
+  }
+
+  function handleSaveMessageSnippet(msg: Message) {
+    const selection = typeof window !== "undefined" ? window.getSelection() : null;
+    const rawSelected = selection ? selection.toString().trim() : "";
+    const text = rawSelected.length > 0 ? rawSelected : msg.content.trim();
+    if (!text) return;
+    const concept = text.length > 80 ? `${text.slice(0, 77)}…` : text;
+    void saveSnippetToNotes({
+      key: `msg-${msg.id}-${text.slice(0, 32)}`,
+      concept,
+      summary: text,
+      artifactType: "text",
+      artifactData: { kind: "text", text, source_message_id: msg.id },
+    });
+  }
+
+  function handleSaveDiagram(diagram: DiagramData) {
+    const title = diagram.title?.trim() || "Saved diagram";
+    void saveSnippetToNotes({
+      key: `diagram-${diagram.id}`,
+      concept: title,
+      summary: title,
+      artifactType: "diagram",
+      artifactData: { kind: "diagram", source: diagram.source, title: diagram.title ?? null },
+    });
+  }
+
+  function handleSaveImage(image: ImageData) {
+    const caption = (image.caption || image.query || "Saved image").trim();
+    const concept = caption.length > 80 ? `${caption.slice(0, 77)}…` : caption;
+    void saveSnippetToNotes({
+      key: `image-${image.id}`,
+      concept,
+      summary: caption,
+      artifactType: "image",
+      artifactData: {
+        kind: "image",
+        image_url: image.image_url,
+        thumbnail_url: image.thumbnail_url ?? null,
+        caption: image.caption ?? null,
+      },
+    });
   }
 
   function handleEvent(event: ChatStreamEvent) {
     if (event.event === "token") { streamSmoothing.push(event.data.delta); return; }
     if (event.event === "sources") { setSources(event.data.sources); return; }
-    if (event.event === "quiz") { setSseQuizzes((q) => [...q, event.data]); return; }
+    if (event.event === "conversation_title") {
+      const activeId = conversationId;
+      if (activeId !== null) {
+        queryClient.setQueryData<Conversation | undefined>(["conversation", activeId], (cur) =>
+          cur ? { ...cur, title: event.data.title } : cur,
+        );
+        void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      }
+      return;
+    }
+    if (event.event === "quiz") {
+      setSseQuizzes((q) => [...q, event.data]);
+      setPendingQuizzes((q) => [...q, event.data]);
+      return;
+    }
     if (event.event === "diagram") {
       setSseDiagrams((d) => [...d, event.data]);
+      setPendingDiagrams((d) => [...d, event.data]);
       return;
     }
     if (event.event === "image") {
       setSseImages((images) => [...images, event.data]);
+      setPendingImages((images) => [...images, event.data]);
       return;
     }
     if (event.event === "key_idea") {
@@ -651,11 +771,42 @@ export function ChatPage() {
       return;
     }
     if (event.event === "end") {
-      messageTracesRef.current[event.data.assistant_message_id] = {
+      const assistantMessageId = event.data.assistant_message_id;
+      messageTracesRef.current[assistantMessageId] = {
         latency_ms: event.data.latency_ms ?? null,
         retrieved_chunk_ids: event.data.retrieved_chunk_ids ?? null,
         tool_trace: event.data.tool_trace ?? null,
       };
+      setPendingDiagrams((pending) => {
+        if (pending.length > 0) {
+          setMessageDiagrams((existing) => ({
+            ...existing,
+            [assistantMessageId]: [...(existing[assistantMessageId] ?? []), ...pending],
+          }));
+        }
+        return [];
+      });
+      setPendingImages((pending) => {
+        if (pending.length > 0) {
+          setMessageImages((existing) => ({
+            ...existing,
+            [assistantMessageId]: [...(existing[assistantMessageId] ?? []), ...pending],
+          }));
+        }
+        return [];
+      });
+      setPendingQuizzes((pending) => {
+        if (pending.length > 0) {
+          setMessageQuizzes((existing) => ({
+            ...existing,
+            [assistantMessageId]: [
+              ...(existing[assistantMessageId] ?? []),
+              ...pending.map((q) => ({ ...q, message_id: assistantMessageId })),
+            ],
+          }));
+        }
+        return [];
+      });
       streamSmoothing.finish();
       return;
     }
@@ -758,7 +909,7 @@ export function ChatPage() {
     textareaRef.current?.focus();
   }
 
-  const title = context?.subject ?? (conversation ? `Study session #${conversation.id}` : "New study session");
+  const title = conversation?.title?.trim() || context?.subject || (conversation ? `Study session #${conversation.id}` : "New study session");
   const subtitleParts: string[] = [];
   if (context?.subject) {
     if (conversation) subtitleParts.push(`Session #${conversation.id}`);
@@ -931,13 +1082,26 @@ export function ChatPage() {
                   !streamedText &&
                   !isStreaming &&
                   !messages.slice(idx + 1).some((m) => m.role === "assistant");
-                return msg.role === "user" ? (
-                  <div key={`${msg.id}-${msg.created_at}`} className="msg-user-row">
-                    <div className="msg-user-bubble">{msg.content}</div>
-                    <CopyButton text={msg.content} />
-                  </div>
-                ) : (
-                  <div key={`${msg.id}-${msg.created_at}`} className="msg">
+                if (msg.role === "user") {
+                  return (
+                    <div key={`${msg.id}-${msg.created_at}`} className="msg-user-row">
+                      <div className="msg-user-bubble">{msg.content}</div>
+                      <CopyButton text={msg.content} />
+                    </div>
+                  );
+                }
+                const msgDiagrams = messageDiagrams[msg.id] ?? [];
+                const msgImages = messageImages[msg.id] ?? [];
+                const liveQuizzes = messageQuizzes[msg.id] ?? [];
+                const historicalForMsg = historicalQuizzes.filter((q) => q.message_id === msg.id);
+                const liveIds = new Set(liveQuizzes.map((q) => q.quiz_id));
+                const msgQuizzes = [
+                  ...historicalForMsg.filter((q) => !liveIds.has(q.quiz_id)),
+                  ...liveQuizzes,
+                ];
+                return (
+                  <Fragment key={`${msg.id}-${msg.created_at}`}>
+                  <div className="msg">
                     <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
                     <div className="msg-body">
                       <div className="msg-sender">{tutorName} · {formatTime(msg.created_at)}</div>
@@ -982,9 +1146,61 @@ export function ChatPage() {
                             </svg>
                           )}
                         </button>
+                        {(() => {
+                          const saved = savedSnippetKeys.has(`msg-${msg.id}-`)
+                            || Array.from(savedSnippetKeys).some((k) => k.startsWith(`msg-${msg.id}-`));
+                          return (
+                            <button
+                              className={`msg-save-btn${saved ? " saved" : ""}`}
+                              onClick={() => handleSaveMessageSnippet(msg)}
+                              type="button"
+                              title={saved ? "Saved to notes" : "Save selection (or whole message) to notes"}
+                              aria-label={saved ? "Saved to notes" : "Save to notes"}
+                            >
+                              {saved ? <BookmarkCheck size={14} strokeWidth={2} /> : <Bookmark size={14} strokeWidth={2} />}
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
+                  {msgDiagrams.map((d) => (
+                    <div key={`diagram-${d.id}`} className="msg msg-artifact msg-artifact-diagram">
+                      <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                      <div className="msg-body">
+                        <div className="msg-sender msg-artifact-label">
+                          <span className="msg-artifact-tag">Diagram</span>
+                          <span className="msg-artifact-source">from {tutorName}</span>
+                        </div>
+                        <DiagramCard diagram={d} onSave={handleSaveDiagram} saved={savedSnippetKeys.has(`diagram-${d.id}`)} />
+                      </div>
+                    </div>
+                  ))}
+                  {msgQuizzes.map((q) => (
+                    <div key={`quiz-${q.quiz_id}`} className="msg msg-artifact msg-artifact-quiz">
+                      <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                      <div className="msg-body">
+                        <div className="msg-sender msg-artifact-label">
+                          <span className="msg-artifact-tag">Quiz</span>
+                          <span className="msg-artifact-source">from {tutorName}</span>
+                        </div>
+                        <QuizCard quiz={q} onAnswered={handleQuizAnswered} onSkipped={handleQuizSkipped} />
+                      </div>
+                    </div>
+                  ))}
+                  {msgImages.map((image) => (
+                    <div key={`image-${image.id}`} className="msg msg-artifact msg-artifact-image">
+                      <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                      <div className="msg-body">
+                        <div className="msg-sender msg-artifact-label">
+                          <span className="msg-artifact-tag">Image</span>
+                          <span className="msg-artifact-source">from {tutorName}</span>
+                        </div>
+                        <ImageArtifactCard image={image} onSave={handleSaveImage} saved={savedSnippetKeys.has(`image-${image.id}`)} />
+                      </div>
+                    </div>
+                  ))}
+                  </Fragment>
                 );
               })}
 
@@ -1009,6 +1225,43 @@ export function ChatPage() {
                 </div>
               )}
 
+              {pendingQuizzes.map((q) => (
+                <div key={`pending-quiz-${q.quiz_id}`} className="msg msg-artifact msg-artifact-quiz">
+                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                  <div className="msg-body">
+                    <div className="msg-sender msg-artifact-label">
+                      <span className="msg-artifact-tag">Quiz</span>
+                      <span className="msg-artifact-source">from {tutorName}</span>
+                    </div>
+                    <QuizCard quiz={q} onAnswered={handleQuizAnswered} onSkipped={handleQuizSkipped} />
+                  </div>
+                </div>
+              ))}
+              {pendingDiagrams.map((d) => (
+                <div key={`pending-diagram-${d.id}`} className="msg msg-artifact msg-artifact-diagram">
+                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                  <div className="msg-body">
+                    <div className="msg-sender msg-artifact-label">
+                      <span className="msg-artifact-tag">Diagram</span>
+                      <span className="msg-artifact-source">from {tutorName}</span>
+                    </div>
+                    <DiagramCard diagram={d} />
+                  </div>
+                </div>
+              ))}
+              {pendingImages.map((image) => (
+                <div key={`pending-image-${image.id}`} className="msg msg-artifact msg-artifact-image">
+                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                  <div className="msg-body">
+                    <div className="msg-sender msg-artifact-label">
+                      <span className="msg-artifact-tag">Image</span>
+                      <span className="msg-artifact-source">from {tutorName}</span>
+                    </div>
+                    <ImageArtifactCard image={image} onSave={handleSaveImage} saved={savedSnippetKeys.has(`image-${image.id}`)} />
+                  </div>
+                </div>
+              ))}
+
               {streamError && (
                 <div className="agent-step">
                   <div className="agent-step-dot">!</div>
@@ -1023,14 +1276,11 @@ export function ChatPage() {
                 </div>
               )}
 
-              {(() => {
-                const sseIds = new Set(sseQuizzes.map((q) => q.quiz_id));
-                const allQuizzes = [
-                  ...historicalQuizzes.filter((q) => !sseIds.has(q.quiz_id)),
-                  ...sseQuizzes,
-                ];
-                return allQuizzes.map((q) => (
-                  <div key={q.quiz_id} className="msg msg-artifact msg-artifact-quiz">
+              {/* Legacy fallback: pre-migration quizzes with no message_id link. */}
+              {historicalQuizzes
+                .filter((q) => q.message_id == null)
+                .map((q) => (
+                  <div key={`legacy-quiz-${q.quiz_id}`} className="msg msg-artifact msg-artifact-quiz">
                     <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
                     <div className="msg-body">
                       <div className="msg-sender msg-artifact-label">
@@ -1040,34 +1290,8 @@ export function ChatPage() {
                       <QuizCard quiz={q} onAnswered={handleQuizAnswered} onSkipped={handleQuizSkipped} />
                     </div>
                   </div>
-                ));
-              })()}
+                ))}
 
-              {sseDiagrams.map((d) => (
-                <div key={d.id} className="msg msg-artifact msg-artifact-diagram">
-                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
-                  <div className="msg-body">
-                    <div className="msg-sender msg-artifact-label">
-                      <span className="msg-artifact-tag">Diagram</span>
-                      <span className="msg-artifact-source">from {tutorName}</span>
-                    </div>
-                    <DiagramCard diagram={d} />
-                  </div>
-                </div>
-              ))}
-
-              {sseImages.map((image) => (
-                <div key={image.id} className="msg msg-artifact msg-artifact-image">
-                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
-                  <div className="msg-body">
-                    <div className="msg-sender msg-artifact-label">
-                      <span className="msg-artifact-tag">Image</span>
-                      <span className="msg-artifact-source">from {tutorName}</span>
-                    </div>
-                    <ImageArtifactCard image={image} />
-                  </div>
-                </div>
-              ))}
             </div>
           ) : null}
         </div>

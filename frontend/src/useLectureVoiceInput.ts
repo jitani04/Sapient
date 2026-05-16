@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { RateLimitError, transcribeAudio } from "./api";
 
-const SPEECH_RMS_THRESHOLD = 0.045;
-const SPEECH_START_MS = 280;
-const SILENCE_END_MS = 850;
+const SPEECH_RMS_THRESHOLD = 0.018;
+const SPEECH_START_MS = 180;
+const SILENCE_END_MS = 1100;
 const MIN_UTTERANCE_MS = 450;
 
 const MIC_CONSTRAINTS: MediaStreamConstraints = {
@@ -23,8 +23,16 @@ interface LectureVoiceInputOptions {
   getEchoReference: () => string;
 }
 
-function getAudioContextCtor(): typeof AudioContext | null {
-  return window.AudioContext ?? null;
+type AudioContextCtor = typeof AudioContext;
+
+declare global {
+  interface Window {
+    webkitAudioContext?: AudioContextCtor;
+  }
+}
+
+function getAudioContextCtor(): AudioContextCtor | null {
+  return window.AudioContext ?? window.webkitAudioContext ?? null;
 }
 
 function mimeExtension(mime: string): string {
@@ -67,7 +75,7 @@ export function useLectureVoiceInput({
     && typeof MediaRecorder !== "undefined"
     && !!getAudioContextCtor()
   ));
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(false);
   const [listening, setListening] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -77,6 +85,7 @@ export function useLectureVoiceInput({
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const monitorTimerRef = useRef<number | null>(null);
+  const startingRef = useRef(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const speechStartedAtRef = useRef<number | null>(null);
@@ -152,11 +161,12 @@ export function useLectureVoiceInput({
     };
 
     onSpeechStartRef.current();
-    recorder.start();
+    recorder.start(250);
     setRecording(true);
   }
 
   function stopMonitoring() {
+    startingRef.current = false;
     if (monitorTimerRef.current !== null) {
       window.clearInterval(monitorTimerRef.current);
       monitorTimerRef.current = null;
@@ -170,10 +180,58 @@ export function useLectureVoiceInput({
     setListening(false);
   }
 
+  async function startMonitoring(cancelledRef?: { current: boolean }) {
+    if (!supported || !activeRef.current || !enabledRef.current || streamRef.current || startingRef.current) return;
+
+    startingRef.current = true;
+    setError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
+      if (cancelledRef?.current || !activeRef.current || !enabledRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      const AudioContextCtor = getAudioContextCtor();
+      if (!AudioContextCtor) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      const audioContext = new AudioContextCtor();
+      if (audioContext.state === "suspended") {
+        await audioContext.resume().catch(() => {});
+      }
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.15;
+      source.connect(analyser);
+
+      streamRef.current = stream;
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+      setListening(true);
+      monitor(stream, analyser);
+    } catch {
+      setEnabled(false);
+      setListening(false);
+      setError("Microphone access denied.");
+    } finally {
+      startingRef.current = false;
+    }
+  }
+
   function monitor(stream: MediaStream, analyser: AnalyserNode) {
     const buffer = new Uint8Array(analyser.fftSize);
     monitorTimerRef.current = window.setInterval(() => {
       if (!activeRef.current || !enabledRef.current) return;
+
+      const audioContext = audioContextRef.current;
+      if (audioContext?.state === "suspended") {
+        void audioContext.resume().catch(() => {});
+        return;
+      }
 
       analyser.getByteTimeDomainData(buffer);
       let sum = 0;
@@ -216,53 +274,31 @@ export function useLectureVoiceInput({
       return;
     }
 
-    let cancelled = false;
-
-    async function startMonitoring() {
-      setError(null);
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-
-        const AudioContextCtor = getAudioContextCtor();
-        if (!AudioContextCtor) return;
-
-        const audioContext = new AudioContextCtor();
-        const source = audioContext.createMediaStreamSource(stream);
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 1024;
-        analyser.smoothingTimeConstant = 0.15;
-        source.connect(analyser);
-
-        streamRef.current = stream;
-        audioContextRef.current = audioContext;
-        analyserRef.current = analyser;
-        setListening(true);
-        monitor(stream, analyser);
-      } catch {
-        setEnabled(false);
-        setListening(false);
-        setError("Microphone access denied.");
-      }
-    }
-
-    void startMonitoring();
+    const cancelledRef = { current: false };
+    void startMonitoring(cancelledRef);
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       stopMonitoring();
     };
-    // stopMonitoring intentionally reads refs; including it would restart the audio graph every render.
+    // start/stop helpers intentionally read refs; including them would restart the audio graph every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, enabled, supported]);
 
   function toggleEnabled() {
     if (!supported) return;
-    setEnabled((current) => !current);
+
+    if (enabledRef.current) {
+      setEnabled(false);
+      setError(null);
+      stopMonitoring();
+      return;
+    }
+
+    enabledRef.current = true;
+    setEnabled(true);
     setError(null);
+    void startMonitoring();
   }
 
   return { supported, listening, recording, transcribing, enabled, error, toggleEnabled };

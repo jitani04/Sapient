@@ -1,6 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,10 +11,88 @@ from app.db.session import get_db_session
 from app.models.conversation import Conversation
 from app.models.quiz import Quiz, QuizAttempt
 from app.schemas.quiz import AttemptCreate, AttemptResult, QuizRead
+from app.services.knowledge_tracing_service import update_knowledge_state_for_quiz
 from app.services.llm_service import LLMService
 from app.services.quiz_grading_service import grade_quiz_attempt
 
 router = APIRouter(tags=["quizzes"])
+
+
+class ManualQuizCreate(BaseModel):
+    subject: str | None = Field(default=None, max_length=255)
+    question: str = Field(min_length=1, max_length=2000)
+    concept: str | None = Field(default=None, max_length=255)
+    quiz_type: str = Field(pattern="^(multiple_choice|short_answer)$")
+    options: list[str] | None = None
+    correct_answer: str = Field(min_length=1, max_length=2000)
+    explanation: str = Field(default="", max_length=4000)
+
+
+async def _get_or_create_manual_quiz_conversation(
+    session: AsyncSession,
+    user_id: int,
+    subject: str | None,
+) -> Conversation:
+    clean_subject = subject.strip() if subject and subject.strip() else None
+    stmt = select(Conversation).where(
+        Conversation.user_id == user_id,
+        Conversation.title == "Manual quizzes",
+        Conversation.title_manually_edited.is_(True),
+    )
+    if clean_subject:
+        stmt = stmt.where(Conversation.subject == clean_subject)
+    else:
+        stmt = stmt.where(Conversation.subject.is_(None))
+    result = await session.execute(stmt.order_by(Conversation.id.asc()).limit(1))
+    conversation = result.scalar_one_or_none()
+    if conversation:
+        return conversation
+    conversation = Conversation(
+        user_id=user_id,
+        subject=clean_subject,
+        title="Manual quizzes",
+        title_manually_edited=True,
+    )
+    session.add(conversation)
+    await session.flush()
+    return conversation
+
+
+@router.post("/quizzes", response_model=QuizRead, status_code=status.HTTP_201_CREATED)
+async def create_manual_quiz(
+    body: ManualQuizCreate,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> QuizRead:
+    if body.quiz_type == "multiple_choice":
+        options = [o.strip() for o in (body.options or []) if o.strip()]
+        if len(options) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Multiple-choice quizzes need at least 2 options.",
+            )
+        if body.correct_answer.strip() not in options:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="correct_answer must match one of the options exactly.",
+            )
+    else:
+        options = None
+
+    conversation = await _get_or_create_manual_quiz_conversation(session, user_id, body.subject)
+    quiz = Quiz(
+        conversation_id=conversation.id,
+        question=body.question.strip(),
+        concept=(body.concept.strip() if body.concept and body.concept.strip() else None),
+        quiz_type=body.quiz_type,
+        options=options,
+        correct_answer=body.correct_answer.strip(),
+        explanation=body.explanation.strip(),
+    )
+    session.add(quiz)
+    await session.commit()
+    await session.refresh(quiz)
+    return QuizRead.model_validate(quiz)
 
 
 @router.get("/conversations/{conversation_id}/quizzes", response_model=list[QuizRead])
@@ -77,9 +156,22 @@ async def submit_attempt(
         explanation = graded.explanation
 
     session.add(QuizAttempt(quiz_id=quiz_id, user_id=user_id, answer=body.answer, is_correct=is_correct))
+    trace = await update_knowledge_state_for_quiz(
+        session=session,
+        user_id=user_id,
+        subject=conv.subject,
+        quiz=quiz,
+        is_correct=is_correct,
+    )
     await session.commit()
 
-    return AttemptResult(is_correct=is_correct, correct_answer=quiz.correct_answer, explanation=explanation)
+    return AttemptResult(
+        is_correct=is_correct,
+        correct_answer=quiz.correct_answer,
+        explanation=explanation,
+        concept=trace.concept if trace else quiz.concept,
+        mastery=trace.mastery if trace else None,
+    )
 
 
 @router.post("/quizzes/{quiz_id}/skip", response_model=AttemptResult)
@@ -96,4 +188,20 @@ async def skip_quiz(
     if not conv or conv.user_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized.")
 
-    return AttemptResult(is_correct=False, correct_answer=quiz.correct_answer, explanation=quiz.explanation)
+    session.add(QuizAttempt(quiz_id=quiz_id, user_id=user_id, answer="[skipped]", is_correct=False))
+    trace = await update_knowledge_state_for_quiz(
+        session=session,
+        user_id=user_id,
+        subject=conv.subject,
+        quiz=quiz,
+        is_correct=False,
+    )
+    await session.commit()
+
+    return AttemptResult(
+        is_correct=False,
+        correct_answer=quiz.correct_answer,
+        explanation=quiz.explanation,
+        concept=trace.concept if trace else quiz.concept,
+        mastery=trace.mastery if trace else None,
+    )

@@ -33,6 +33,7 @@ export function WeakQuizModal({ quizzes, onClose }: Props) {
     ? {
         quiz_id: currentQuiz.id,
         question: currentQuiz.question,
+        concept: currentQuiz.concept,
         quiz_type: currentQuiz.quiz_type,
         options: currentQuiz.options,
       }

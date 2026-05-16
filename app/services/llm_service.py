@@ -95,6 +95,40 @@ class LLMService:
         async for event in self._stream_lc(self._to_langchain_messages(input_messages)):
             yield event
 
+    async def generate_text(self, *, input_messages: list[dict[str, Any]]) -> str:
+        usage_dict: dict[str, Any] | None = None
+        with _tracer.start_as_current_span(
+            "llm.generate_text",
+            attributes={
+                "gen_ai.system": "google.gemini",
+                "gen_ai.request.model": self._model,
+                "gen_ai.operation.name": "chat",
+            },
+        ) as span:
+            try:
+                response = await self._llm.ainvoke(self._to_langchain_messages(input_messages))
+                usage = getattr(response, "usage_metadata", None)
+                if usage is not None:
+                    usage_dict = dict(usage)
+            except Exception as exc:
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                record_llm_call(self._model, "error")
+                raise
+            self._record_usage(span, usage_dict)
+            record_llm_call(self._model, "ok")
+
+        if isinstance(response.content, str):
+            return response.content
+        if isinstance(response.content, list):
+            parts: list[str] = []
+            for part in response.content:
+                if isinstance(part, str):
+                    parts.append(part)
+                elif isinstance(part, dict) and part.get("type") == "text" and part.get("text"):
+                    parts.append(str(part["text"]))
+            return "".join(parts)
+        return str(response.content)
+
     async def stream_lc(self, *, lc_messages: list[BaseMessage]) -> AsyncIterator[LLMStreamEvent]:
         async for event in self._stream_lc(lc_messages):
             yield event

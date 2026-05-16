@@ -3,6 +3,18 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, HttpUrl
 
+LearningMapStatus = str
+
+
+class KnowledgeStateRead(BaseModel):
+    concept_id: str
+    concept: str
+    mastery: float
+    attempts: int
+    correct: int
+    last_observed_at: str | None = None
+    params: dict[str, float]
+
 
 class ProjectSetupRequest(BaseModel):
     subject: str
@@ -30,7 +42,19 @@ class ProjectProfileRead(BaseModel):
     cover_image_photographer: str | None = None
     cover_image_photographer_url: str | None = None
     mind_map: dict[str, Any] | None = None
+    learning_map_progress: dict[str, LearningMapStatus] | None = None
+    knowledge_state: dict[str, KnowledgeStateRead] | None = None
     created_at: datetime
+
+
+class LearningMapProgressUpdate(BaseModel):
+    node_id: str
+    status: LearningMapStatus
+
+
+class ProjectMindMapUpdate(BaseModel):
+    mind_map: dict[str, Any]
+    learning_map_progress: dict[str, LearningMapStatus] | None = None
 
 
 class ProjectCoverImageUploadResponse(BaseModel):
@@ -58,3 +82,4 @@ class ProjectProgressRead(BaseModel):
     concepts_covered: list[str]
     weak_areas: list[str]
     next_review: list[str]
+    knowledge_mastery: list[KnowledgeStateRead] = []

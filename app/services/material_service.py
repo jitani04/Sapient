@@ -20,7 +20,7 @@ from app.services import s3_client
 from app.services.embedding_service import create_embedding_service
 from app.services.errors import MaterialNotFoundError
 
-SUPPORTED_SUFFIXES = {".pdf", ".pptx", ".txt", ".md"}
+SUPPORTED_SUFFIXES = {".pdf", ".pptx", ".docx", ".txt", ".md"}
 
 
 @dataclass(slots=True)
@@ -50,7 +50,7 @@ def sanitize_filename(filename: str) -> str:
 def validate_material_filename(filename: str) -> None:
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
-        raise ValueError("Only PDF, PPTX, TXT, and MD uploads are supported.")
+        raise ValueError("Only PDF, PPTX, DOCX, TXT, and MD uploads are supported.")
 
 
 def build_user_key_prefix(user_id: int) -> str:
@@ -220,6 +220,8 @@ async def extract_material_blocks(path: Path) -> list[ExtractedBlock]:
         return await asyncio.to_thread(_extract_pdf_blocks, path)
     if suffix == ".pptx":
         return await asyncio.to_thread(_extract_pptx_blocks, path)
+    if suffix == ".docx":
+        return await asyncio.to_thread(_extract_docx_blocks, path)
 
     content = await asyncio.to_thread(path.read_bytes)
     text = content.decode("utf-8", errors="ignore")
@@ -316,3 +318,16 @@ def _extract_pptx_blocks(path: Path) -> list[ExtractedBlock]:
         raise ValueError("Uploaded PPTX file is not readable.") from exc
 
     return blocks
+
+
+def _extract_docx_blocks(path: Path) -> list[ExtractedBlock]:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            try:
+                text = _extract_text_from_xml(archive.read("word/document.xml"))
+            except KeyError as exc:
+                raise ValueError("Uploaded DOCX file is missing document text.") from exc
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Uploaded DOCX file is not readable.") from exc
+
+    return [ExtractedBlock(text=text)] if text else []

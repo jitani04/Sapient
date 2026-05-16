@@ -1,4 +1,5 @@
 import type { KeyIdea } from "../types";
+import { DiagramCard } from "./DiagramCard";
 
 export function isNoteDue(idea: KeyIdea): boolean {
   return new Date(idea.sr_due_date) <= new Date();
@@ -45,7 +46,35 @@ export function NoteCard({ note, deleting, promoting, showSubject = true, onDele
       </div>
 
       <div className="note-concept">{note.concept}</div>
-      <div className="note-summary">{note.summary}</div>
+      {note.artifact_type === "text" && note.artifact_data?.kind === "text" ? (
+        <blockquote className="note-snippet">{note.artifact_data.text}</blockquote>
+      ) : (
+        <div className="note-summary">{note.summary}</div>
+      )}
+      {note.artifact_type === "diagram" && note.artifact_data?.kind === "diagram" && (
+        <div className="note-artifact note-artifact-diagram">
+          <DiagramCard
+            diagram={{
+              id: `note-${note.id}`,
+              source: note.artifact_data.source,
+              title: note.artifact_data.title ?? undefined,
+            }}
+          />
+        </div>
+      )}
+      {note.artifact_type === "image" && note.artifact_data?.kind === "image" && (
+        <a
+          className="note-artifact note-artifact-image"
+          href={note.artifact_data.image_url}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <img
+            alt={note.artifact_data.caption ?? note.concept}
+            src={note.artifact_data.thumbnail_url ?? note.artifact_data.image_url}
+          />
+        </a>
+      )}
 
       <div className="note-card-footer">
         <span className="note-date">{formatNoteDate(note.created_at)}</span>

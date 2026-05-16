@@ -7,12 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_user_id
 from app.db.session import get_db_session
 from app.models.user import User
-from app.schemas.conversation import ConversationCreate, ConversationRead
+from app.schemas.conversation import ConversationCreate, ConversationRead, ConversationUpdate
 from app.services.conversation_service import (
     create_conversation,
     delete_conversation_for_user,
     get_conversation_for_user,
     list_conversations_for_user,
+    update_conversation_title_for_user,
 )
 from app.services.errors import ConversationNotFoundError
 
@@ -58,6 +59,25 @@ async def get_conversation_endpoint(
             session=session,
             conversation_id=conversation_id,
             user_id=user_id,
+        )
+        return ConversationRead.model_validate(conversation)
+    except ConversationNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found.") from exc
+
+
+@router.patch("/{conversation_id}", response_model=ConversationRead)
+async def update_conversation_endpoint(
+    conversation_id: int,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    body: ConversationUpdate,
+) -> ConversationRead:
+    try:
+        conversation = await update_conversation_title_for_user(
+            session=session,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            title=body.title,
         )
         return ConversationRead.model_validate(conversation)
     except ConversationNotFoundError as exc:

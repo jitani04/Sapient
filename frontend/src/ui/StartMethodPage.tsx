@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 
-import { createConversation } from "../api";
+import { createConversation, generateMindMap } from "../api";
 import { clearPendingStudyContext, getPendingStudyContext } from "../studyState";
 
 export function StartMethodPage() {
@@ -15,7 +15,15 @@ export function StartMethodPage() {
   }
 
   const createMutation = useMutation({
-    mutationFn: () => createConversation(pendingContext.subject),
+    mutationFn: async () => {
+      const conversation = await createConversation(pendingContext.subject);
+      try {
+        await generateMindMap(pendingContext.subject);
+      } catch {
+        // Setup save and the project page both retry this automatically.
+      }
+      return conversation;
+    },
     onSuccess: (c) => {
       clearPendingStudyContext();
       navigate(`/projects/${encodeURIComponent(pendingContext.subject)}/setup?session=${c.id}`, { replace: true });
@@ -64,7 +72,7 @@ export function StartMethodPage() {
             onClick={() => createMutation.mutate()}
             type="button"
           >
-            {createMutation.isPending ? "Creating…" : "Start subject"}
+            {createMutation.isPending ? "Creating subject…" : "Start subject"}
           </button>
         </div>
       </div>

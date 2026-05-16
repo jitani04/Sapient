@@ -1,11 +1,13 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from prometheus_client import make_asgi_app
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.llm_errors import is_llm_quota_error, retry_after_from_message
 
 from app.api.routes.artifacts import router as artifacts_router
+from app.api.routes.assignments import router as assignments_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.conversations import router as conversations_router
@@ -40,7 +42,42 @@ init_observability(
 )
 configure_logging(settings.log_level, json_logs=settings.json_logs)
 
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
+# CSP is path-scoped: docs/redoc need a CDN for Swagger UI assets,
+# every other route is JSON and gets the strict policy.
+_DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
+_CSP_DEFAULT = "default-src 'none'; frame-ancestors 'none'"
+_CSP_DOCS = (
+    "default-src 'none'; "
+    "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+    "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+    "img-src 'self' data: https://fastapi.tiangolo.com; "
+    "font-src 'self' https://cdn.jsdelivr.net; "
+    "frame-ancestors 'none'"
+)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        for header, value in _SECURITY_HEADERS.items():
+            response.headers.setdefault(header, value)
+        path = request.url.path
+        csp = _CSP_DOCS if any(path.startswith(p) for p in _DOCS_PATHS) else _CSP_DEFAULT
+        response.headers.setdefault("Content-Security-Policy", csp)
+        if request.url.scheme == "https":
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response
+
+
 app = FastAPI(title=settings.app_name)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allow_origins,
@@ -63,6 +100,7 @@ app.include_router(materials_router)
 app.include_router(projects_router)
 app.include_router(quiz_router)
 app.include_router(artifacts_router)
+app.include_router(assignments_router)
 app.include_router(flashcards_router)
 app.include_router(feedback_router)
 app.include_router(search_router)

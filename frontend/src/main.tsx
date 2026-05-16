@@ -6,7 +6,6 @@ import { RouterProvider } from "react-router-dom";
 
 import { router } from "./router";
 import "./styles.css";
-import "@excalidraw/excalidraw/index.css";
 import { applyTheme, getStoredTheme } from "./theme";
 import { applyReadingPrefs } from "./readingPrefs";
 import { ReadingPrefsProvider } from "./ReadingPrefsContext";

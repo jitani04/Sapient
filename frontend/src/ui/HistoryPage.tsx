@@ -18,6 +18,10 @@ function duration(c: Conversation): string {
   return `${mins} min`;
 }
 
+function sessionLabel(conversation: Conversation): string {
+  return conversation.title?.trim() || `${conversation.subject ?? "General"} study session`;
+}
+
 export function HistoryPage() {
   const { data: conversations = [], isLoading, isError } = useQuery({
     queryKey: ["conversations"],
@@ -82,7 +86,7 @@ export function HistoryPage() {
             {sessions.map((s) => (
               <div key={s.id} className="history-item">
                 <div className="history-item-info">
-                  <div className="history-item-name">{s.subject ?? `Study session #${s.id}`}</div>
+                  <div className="history-item-name">{sessionLabel(s)}</div>
                   <div className="history-item-meta">
                     {formatDate(s.created_at)} · {s.messages.length} messages · {duration(s)}
                   </div>

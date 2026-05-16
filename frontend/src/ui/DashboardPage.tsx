@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ArrowRight, BookOpen, Plus } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, Plus } from "lucide-react";
 
-import { getCurrentUser, listConversations, listProjectProfiles } from "../api";
+import { getCurrentUser, listAssignments, listConversations, listProjectProfiles, listSmartReminders } from "../api";
 import { normalizeSubject } from "../subjects";
 import type { Conversation } from "../types";
 
@@ -90,6 +90,10 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+function formatDue(value: string): string {
+  return new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 export function DashboardPage() {
   const { data: user } = useQuery({
     queryKey: ["me"],
@@ -104,6 +108,24 @@ export function DashboardPage() {
   const { data: projectProfiles = [] } = useQuery({
     queryKey: ["project-profiles"],
     queryFn: listProjectProfiles,
+  });
+
+  const { data: assignments = [] } = useQuery({
+    queryKey: ["assignments", "dashboard"],
+    queryFn: () => listAssignments(),
+    staleTime: 30_000,
+  });
+
+  const upcomingAssignments = (() => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    return assignments.filter((a) => new Date(a.due_at).getTime() >= startOfToday.getTime());
+  })();
+
+  const { data: reminders = [] } = useQuery({
+    queryKey: ["smart-reminders"],
+    queryFn: listSmartReminders,
+    staleTime: 30_000,
   });
 
   const projectProfileBySubject = new Map(projectProfiles.map((profile) => [normalizeSubject(profile.subject), profile]));
@@ -137,6 +159,46 @@ export function DashboardPage() {
       <div className="dashboard-hero">
         <h1 className="dashboard-greeting">{timeOfDayGreeting()}, {firstName}.</h1>
       </div>
+
+      <section className="dashboard-calendar-band">
+        <div className="dashboard-calendar-grid">
+          <div className="dashboard-calendar-panel">
+            <div className="dashboard-calendar-panel-title">Upcoming deadlines</div>
+            {upcomingAssignments.length === 0 ? (
+              <p className="dashboard-calendar-empty">No upcoming deadlines.</p>
+            ) : (
+              upcomingAssignments.slice(0, 2).map((assignment) => (
+                <Link
+                  className="dashboard-deadline-row"
+                  key={assignment.id}
+                  to={assignment.subject ? `/projects/${encodeURIComponent(assignment.subject)}` : "/calendar"}
+                >
+                  <CalendarDays size={15} strokeWidth={2} />
+                  <span>{assignment.title}</span>
+                  <strong>{formatDue(assignment.due_at)}</strong>
+                </Link>
+              ))
+            )}
+          </div>
+          <div className="dashboard-calendar-panel">
+            <div className="dashboard-calendar-panel-title">Smart reminders</div>
+            {reminders.length === 0 ? (
+              <p className="dashboard-calendar-empty">Nothing needs attention right now.</p>
+            ) : (
+              reminders.slice(0, 1).map((reminder) => (
+                <Link
+                  className={`dashboard-reminder-row dashboard-reminder-${reminder.severity}`}
+                  key={reminder.id}
+                  to={reminder.subject ? `/projects/${encodeURIComponent(reminder.subject)}` : "/calendar"}
+                >
+                  <span>{reminder.title}</span>
+                  <strong>{reminder.body}</strong>
+                </Link>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
 
       <div className="dashboard-collection">
         <div className="dashboard-collection-bar">

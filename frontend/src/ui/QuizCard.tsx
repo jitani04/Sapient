@@ -68,6 +68,7 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
     <form className="quiz-card" onSubmit={handleFormSubmit}>
       <div className="quiz-header">
         <span className="quiz-badge">Knowledge Check</span>
+        {quiz.concept && <span className="quiz-concept-badge">{quiz.concept}</span>}
       </div>
 
       <p className="quiz-question">{quiz.question}</p>
@@ -147,6 +148,11 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
             </div>
           )}
           <div className="quiz-result-explanation">{result.explanation}</div>
+          {typeof result.mastery === "number" && result.concept && (
+            <div className="quiz-mastery">
+              BKT mastery for {result.concept}: {Math.round(result.mastery * 100)}%
+            </div>
+          )}
         </div>
       )}
     </form>

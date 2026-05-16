@@ -93,9 +93,10 @@ Uploaded PDF, TXT, and Markdown files are processed into semantic chunks. Each c
 
 1. embeds the user's query
 2. filters materials by ownership and optional subject
-3. ranks chunks by cosine similarity
-4. limits overrepresentation from any one material
-5. injects the best matches into the prompt as contextual sources
+3. over-fetches candidate chunks by cosine similarity
+4. optionally reranks those candidates with a cross-encoder reranker
+5. limits overrepresentation from any one material
+6. injects the best matches into the prompt as contextual sources
 
 The retrieved chunks are also streamed back to the frontend as citation metadata so the interface can display sources to the student.
 
@@ -143,7 +144,9 @@ Ready materials can be previewed through a signed GET URL and used for retrieval
 
 ### 6.4 Inline quizzes and weak-area practice
 
-The tutor can generate inline quizzes during a session. Student answers are stored and evaluated server-side. Separately, the project layer can generate targeted weak-area quizzes using prior summaries and failed quiz attempts, producing a dedicated practice conversation and quiz set.
+The tutor can generate inline quizzes during a session. Student answers are stored and evaluated server-side. Separately, the project layer can generate targeted weak-area quizzes using prior summaries, failed quiz attempts, and concept mastery signals, producing a dedicated practice conversation and quiz set.
+
+Quiz attempts also feed a Bayesian Knowledge Tracing (BKT) model. Each observed answer updates a per-concept mastery probability using the standard prior, learn, guess, and slip parameters. The resulting mastery estimate is stored on the subject profile and used by the Learning Map and tutor prompt to distinguish topics that are mastered, in progress, or likely to need review.
 
 ### 6.5 Key ideas and notes
 
@@ -526,3 +529,75 @@ Commits pushed to `main` now trigger `.github/workflows/deploy.yml`. The workflo
 - *Manual local `fly deploy` after every commit.* Simple, but it depends on a developer machine and makes it easy for the deployed version to drift from `origin/main`.
 - *Separate backend and frontend workflows.* Slightly more granular, but this app's deployable surfaces are coupled by API/frontend contract changes and should advance together for now.
 - *Build-only CI plus manual deploy approval.* Useful for higher-risk production systems, but too much ceremony for the current project size. Manual dispatch remains available when a redeploy is needed without a new commit.
+
+## Decision: Bayesian Knowledge Tracing as the student model (2026-05-15)
+
+Sapient now maintains a per-subject BKT knowledge state on `project_profiles.knowledge_state` and stores an optional `concept` on each generated quiz. When a student answers or skips a quiz, the backend resolves the quiz to a Learning Map topic when possible, applies the BKT update, persists the new mastery probability, and maps that probability back to the Learning Map status. The tutor prompt receives the resulting mastery percentages so live tutoring can prioritize weak concepts instead of relying only on summary text.
+
+*Rationale.* BKT is a canonical intelligent tutoring system algorithm and gives the app an explicit student model: not just "how many questions were correct," but "how likely is this student to have mastered this concept?" It is also explainable and data-efficient enough for the current product scale, unlike sequence models that require many historical attempts per user.
+
+*Alternatives considered.*
+- *Naive correctness rate per concept.* Easier to implement, but it cannot distinguish guessing from knowledge or mistakes from non-mastery.
+- *Deep Knowledge Tracing.* More expressive, but it needs far more attempt-sequence data than the app currently has and is harder to explain in the UI and writeup.
+- *Only prompting the LLM to infer weak areas.* Flexible, but not a durable model. The same evidence should produce the same mastery update regardless of prompt phrasing.
+
+## Decision: Optional cross-encoder reranking for RAG retrieval (2026-05-15)
+
+The retrieval pipeline now supports an optional second-stage reranker. The backend first over-fetches vector candidates from pgvector (`RAG_CANDIDATE_K`, default 50), then, when `RAG_RERANKER_ENABLED=true` and `LANGSEARCH_API_KEY` is configured, sends those candidate passages to LangSearch's `/v1/rerank` endpoint using `langsearch-reranker-v1`. The reranked results are then trimmed with the existing per-material diversity rule before being injected into the tutor prompt and streamed as source metadata.
+
+*Rationale.* Embedding search is fast and broad, but it scores the query and each passage independently in the vector space. A cross-encoder reranker scores the query-passage pair directly, which is the standard two-stage retrieval architecture for improving precision at the small `top_k` used in prompts. This gives the project a concrete retrieval-quality ML story: vector-only versus vector-plus-reranker can be evaluated with recall, precision, and MRR using the existing retrieval harness.
+
+*Alternatives considered.*
+- *Always rerank every query.* Rejected because reranking adds latency and an external API dependency; the feature is opt-in and fail-open.
+- *Cohere Rerank.* Strong industry baseline, but paid at production usage. LangSearch fits the student-project budget better while preserving the same two-stage retrieval architecture.
+- *Local BGE reranker immediately.* Stronger local-control story, but it adds model-hosting and dependency weight that is not necessary to validate the retrieval architecture.
+- *Increase `RAG_TOP_K` instead.* Cheaper, but it pushes more context into the LLM rather than making the retrieved context better, increasing prompt cost and distraction.
+
+## Decision: First-pass security hardening — security headers and dependency bumps (2026-05-15)
+
+A read-only security audit of the codebase produced three classes of fixable issues; this decision records the subset that was applied immediately and the items deferred for separate validation.
+
+**Applied.**
+1. **Security headers middleware** in `app/main.py`. Every response now carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Strict-Transport-Security: max-age=31536000; includeSubDomains` when the request was HTTPS. A strict `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` is applied to API responses; `/docs`, `/redoc`, and `/openapi.json` get a relaxed CSP that whitelists the jsDelivr CDN so Swagger UI continues to load.
+2. **Backend dependency pins** in `requirements.txt`: `pypdf 5.4.0 → 6.10.2` (closes 22 pypdf CVEs around malformed PDF handling, directly relevant because Sapient parses user-uploaded PDFs), `python-multipart 0.0.20 → 0.0.27` (closes 3 multipart-parsing CVEs), `pyjwt 2.10.1 → 2.12.0`. Verified by `pip install --dry-run` and the full unit test suite (34 passed).
+3. **Frontend transitive bumps** via `npm audit fix` in `frontend/`. Reduced reported vulnerabilities from 12 (1 high, 11 moderate) to 9 (1 high, 8 moderate). The residual high (lodash-es prototype pollution / `_.template` code injection) and the nanoid moderates are all transitive through `@excalidraw/excalidraw`; `npm audit fix --force` would bump it to a major-version-incompatible release and is deferred.
+
+**Deferred (with rationale).**
+- **`fastapi 0.115 → 0.122` + `starlette 0.46 → 0.49`.** Starlette 0.46.2 has two open CVEs (multipart parsing DoS) and FastAPI 0.115.12 pins starlette below 0.49, so closing the CVE requires bumping both. A 7-minor FastAPI bump can change middleware ordering and dependency-override scoping behavior; the audit pinned 0.122.1 in a sandbox and confirmed pip resolution but did not run the full integration suite. Treated as a separate change that needs its own validation pass.
+- **JWT in `localStorage` → `HttpOnly` cookie.** The current bearer-token setup is exposed to XSS payloads that bypass CSP. Migrating requires a `/auth/logout` endpoint, CSRF token plumbing for state-changing requests, and frontend changes to `frontend/src/api.ts` and `frontend/src/auth.ts`. With the new strict CSP in place and no real users, the residual risk is small enough to handle in a dedicated change.
+- **Excalidraw bump.** `npm audit fix --force` installs `@excalidraw/excalidraw@0.17.6`, a breaking-version downgrade off the current main branch. Behavior validation needs a manual pass over the diagramming feature.
+
+*Rationale.* The three applied changes are non-behavioral and reversible: security headers are response decoration, dependency point-bumps have small surface area (pypdf and pyjwt APIs in use are stable across the bump), and `npm audit fix` only touches transitive deps. The deferred items all carry behavioral risk or require parallel frontend changes and deserve their own focused commits with smoke testing.
+
+*Alternatives considered.*
+- *Defer everything until a single big "security PR".* Rejected because it keeps trivially-closeable CVEs open while waiting for the harder changes to land.
+- *Apply `npm audit fix --force` and bump FastAPI in this pass.* Rejected because both are behavior-affecting changes that should be tested in isolation, not bundled with a defensive-headers patch.
+- *Strict CSP everywhere, including `/docs`.* Rejected because it breaks Swagger UI's CDN-loaded assets. The relaxed CSP on docs paths still pins script/style sources to jsDelivr and `self` — a real improvement over no CSP — without losing the developer affordance.
+
+## Decision: Mermaid replaces Excalidraw for tutor-generated diagrams (2026-05-15)
+
+The `create_diagram` tutor tool previously asked the LLM to emit raw Excalidraw element JSON — boxes, arrows, `boundElements` cross-references, `startBinding`/`endBinding` pairs, and a dozen other low-level fields per element. The model frequently produced malformed scenes: orphan arrows with no bindings, shapes missing their inbound edges, or arrays of nodes with no connecting edges at all. The pipeline now asks the model for **Mermaid source code** and renders it on the client with `mermaid.js`. The tool's `parameters` schema changed from `{elements: <Excalidraw JSON string>, title}` to `{source: <Mermaid source>, title}`, and the SSE `diagram` event payload changed from `{elements: [...]}` to `{source: "..."}`. `@excalidraw/excalidraw` is removed as a dependency.
+
+*Rationale.* Mermaid is a small, well-defined DSL designed for exactly the diagram types a tutor draws — flowcharts, hierarchies, sequences, state machines, ER diagrams, mind maps. The LLM goes from generating ~200 lines of fragile JSON per diagram to ~5 lines of declarative source, which dramatically reduces the malformed-output failure mode. The conversion-to-render is now a stable, well-tested library path (`mermaid.render(id, source)`) instead of a chain of LLM correctness assumptions. As a side effect, the security audit's deferred `@excalidraw/excalidraw` major-version bump is moot — the package is gone, and the frontend's reported npm audit count drops from 12 vulnerabilities (1 high, 11 moderate) to 0.
+
+*Alternatives considered.*
+- *Server-side repair of LLM-produced Excalidraw JSON.* Rejected: it would only mask the underlying fragility (the model still has to produce a structurally complex format correctly most of the time), and the repair logic would need to grow as new failure modes emerge. Quick patch, not a fix.
+- *Keep Excalidraw, switch input to Mermaid via `@excalidraw/mermaid-to-excalidraw`.* The Excalidraw team's own recommended path, and it preserves the hand-drawn aesthetic. Rejected for a masters project where polish is a secondary goal: the conversion library introduces another moving part, and the underlying excalidraw security advisories still apply. Worth revisiting if the project ever needs the hand-drawn look as a brand differentiator.
+- *PlantUML / Graphviz.* Stronger for class/ER diagrams than Mermaid was historically, but PlantUML needs a Java server and Graphviz needs WASM bundles. Mermaid's coverage of the relevant diagram types is now wide enough that the operational simplicity wins.
+- *Hybrid (Mermaid for structural, AI-generated raster images for spatial / free-form).* Useful if a tutoring case genuinely fails Mermaid's expressiveness, but the existing `find_image` tool (Pexels + web search) already covers real-world photographs. Deferred until a concrete failure case appears.
+- *Render Mermaid as Excalidraw-style sketchy SVG via Mermaid's `look: "handDrawn"` config.* Available in Mermaid 11.x, recovers some of the Excalidraw aesthetic without the dependency. Not enabled in this pass — clean SVG is what defaults the audit and writeup care about — but it's a one-line toggle if the aesthetic becomes a priority.
+
+## Decision: Assignments, calendar feeds, and BKT-driven smart reminders (2026-05-15)
+
+Sapient now models student deadlines as first-class entities: a manual `Assignment` (title, due date, subject, notes, source URL) and a `CalendarFeed` that points at an iCal/webcal URL (e.g. a Canvas course calendar). Assignments imported from a feed carry `source="canvas"` and a stable `source_uid` so re-syncs are idempotent. A `/assignments/reminders` endpoint produces a unified, severity-sorted list combining upcoming-due alerts (`overdue` / `urgent` / `soon`) with mastery alerts derived from the existing BKT knowledge state and learning-map `needs_review` flags. The frontend exposes this through a global `/calendar` page, a dashboard preview, and a per-subject upcoming-strip.
+
+*Rationale.* The tutor was already modeling what a student *knows* (BKT) and *should learn next* (learning map). Adding what they *owe and when* closes the loop: reminders can now say "your essay is due in 2 days and your BKT mastery on composition is low — start with that." Importing via standard iCal/webcal rather than the Canvas REST API means the integration works with any Canvas instance the student already has access to, with no per-institution OAuth setup. A masters writeup benefits from being able to demonstrate the three signals composing.
+
+*Alternatives considered.*
+- *Canvas REST API (OAuth).* More structured data (rubrics, submission state), but requires per-institution OAuth app registration and a Canvas tenant the student admins. Rejected as too much operational lift for the project; iCal export is universally available behind a personal-secret URL.
+- *Treat reminders as a pure cron job that writes to a `notifications` table.* Cleaner separation, but adds a scheduler dependency. The on-read computation in `build_smart_reminders` is cheap (one indexed query + one profile read) and avoids the staleness problem entirely. Revisit if reminder generation ever needs to fan out to email/push.
+- *Use the LLM to summarize reminders.* Would produce nicer copy, but introduces LLM latency on every dashboard load and a non-determinism cost during evaluation. The current rule-based copy ("your essay is due in 2 days, prioritize composition while preparing") is explainable and testable.
+
+*Security: SSRF in the iCal fetcher (audited and fixed in the same pass).* The initial implementation called `httpx.get(url, follow_redirects=True)` on user-supplied feed URLs with only a scheme check. That was a clear SSRF: a student could submit `http://169.254.169.254/latest/meta-data/...` (AWS instance metadata) or `http://localhost:8000/auth/...` and have the server fetch it. `fetch_ical_events` now resolves the host, rejects any address that is loopback, private (RFC1918), link-local, multicast, reserved, or unspecified, manually follows up to 3 redirects with re-validation at each hop, and caps the response at 5 MiB. Access control on the routes themselves was already correct — every endpoint scopes by `user_id` from the JWT, and `_get_assignment` / `_get_feed` enforce ownership.
+
+*Known limitation.* The IP-validation approach does not defend against DNS rebinding, where an attacker controls a DNS record that resolves to a public IP at validation time and a private IP at connection time. The standard defense (resolve once, then connect by IP with a `Host:` header) breaks SNI for HTTPS. For a masters project with no real users, this residual risk is accepted; a production deployment should pin the resolved IP into the httpx transport or use a SOCKS proxy that enforces egress policy.

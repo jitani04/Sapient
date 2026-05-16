@@ -9,7 +9,7 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
-const MATERIAL_ACCEPT = ".pdf,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/x-markdown";
+const MATERIAL_ACCEPT = ".pdf,.pptx,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/x-markdown";
 
 export function MaterialsView({ subject }: { subject: string }) {
   const decodedSubject = subject;
@@ -65,7 +65,7 @@ export function MaterialsView({ subject }: { subject: string }) {
         <label className="upload-zone">
           <div className="upload-zone-icon"><Upload size={22} strokeWidth={1.6} /></div>
           <div className="upload-zone-label">Drop files or click to browse</div>
-          <div className="upload-zone-sub">PDF, PPTX, TXT, MD · max 10 MB each</div>
+          <div className="upload-zone-sub">PDF, PPTX, DOCX, TXT, MD · max 10 MB each</div>
           <input type="file" multiple accept={MATERIAL_ACCEPT} style={{ display: "none" }} onChange={handleFiles} />
         </label>
         {uploadError ? <p className="error-text" style={{ marginTop: "0.5rem" }}>{uploadError}</p> : null}

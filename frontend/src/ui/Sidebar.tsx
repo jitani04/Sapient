@@ -3,6 +3,7 @@ import { MouseEvent, PointerEvent, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutGrid,
+  CalendarDays,
   Search,
   User,
   Settings,
@@ -13,6 +14,7 @@ import {
 
 import { deleteConversation, listConversations } from "../api";
 import { clearToken } from "../auth";
+import { formatSubjectName } from "../subjects";
 import { ThemeToggle } from "./ThemeToggle";
 
 const SIDEBAR_WIDTH_KEY = "sapient-sidebar-width";
@@ -30,11 +32,9 @@ function getStoredSidebarWidth(): number {
   return Number.isFinite(saved) ? clampSidebarWidth(saved) : DEFAULT_SIDEBAR_WIDTH;
 }
 
-function recentChatLabel(conversation: { id: number; subject: string | null; messages: { role: string; content: string }[] }): string {
-  const firstUserMessage = conversation.messages.find((message) => message.role === "user")?.content.trim();
-  if (firstUserMessage) {
-    return firstUserMessage.length > 34 ? `${firstUserMessage.slice(0, 34)}…` : firstUserMessage;
-  }
+function recentChatLabel(conversation: { id: number; title: string | null; subject: string | null }): string {
+  const title = conversation.title?.trim();
+  if (title) return title.length > 34 ? `${title.slice(0, 34)}…` : title;
   return `Study session #${conversation.id}`;
 }
 
@@ -177,6 +177,14 @@ export function Sidebar() {
           <span className="sidebar-shortcut">⌘K</span>
         </Link>
 
+        <Link
+          to="/calendar"
+          className={`sidebar-item ${isActive("/calendar") ? "active" : ""}`}
+        >
+          <span className="sidebar-item-icon"><CalendarDays size={16} strokeWidth={1.8} /></span>
+          <span className="sidebar-item-label">Calendar</span>
+        </Link>
+
         {projects.length > 0 && (
           <>
             <div className="sidebar-section">Subjects</div>
@@ -186,7 +194,7 @@ export function Sidebar() {
                 to={`/projects/${encodeURIComponent(subject)}`}
                 className={`sidebar-project ${isActive(`/projects/${encodeURIComponent(subject)}`) ? "active" : ""}`}
               >
-                <span className="sidebar-project-name">{subject}</span>
+                <span className="sidebar-project-name">{formatSubjectName(subject)}</span>
               </Link>
             ))}
           </>
@@ -197,7 +205,7 @@ export function Sidebar() {
             <div className="sidebar-divider" />
             <div className="sidebar-section">Recent</div>
             {recentConversations.map((c) => {
-              const project = c.subject ?? "General";
+              const project = formatSubjectName(c.subject ?? "General");
               return (
                 <Link
                   key={c.id}

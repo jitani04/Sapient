@@ -51,3 +51,22 @@ async def delete_conversation_for_user(*, session: AsyncSession, conversation_id
     )
     await session.delete(conversation)
     await session.commit()
+
+
+async def update_conversation_title_for_user(
+    *,
+    session: AsyncSession,
+    conversation_id: int,
+    user_id: int,
+    title: str | None,
+) -> Conversation:
+    conversation = await get_conversation_for_user(
+        session=session,
+        conversation_id=conversation_id,
+        user_id=user_id,
+    )
+    clean_title = (title or "").strip()
+    conversation.title = clean_title[:120] or None
+    conversation.title_manually_edited = True
+    await session.commit()
+    return await get_conversation_for_user(session=session, conversation_id=conversation_id, user_id=user_id)

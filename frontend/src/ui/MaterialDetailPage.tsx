@@ -26,10 +26,9 @@ function formatDateTime(value: string | null): string {
   });
 }
 
-function getFirstUserMessage(messages: { role: string; content: string }[]): string {
-  const firstUserMessage = messages.find((message) => message.role === "user")?.content.trim();
-  if (!firstUserMessage) return "Untitled study session";
-  return firstUserMessage.length > 88 ? `${firstUserMessage.slice(0, 88)}...` : firstUserMessage;
+function sessionLabel(conversation: { title: string | null; subject: string | null; id: number }): string {
+  const title = conversation.title?.trim() || `${conversation.subject ?? "General"} study session`;
+  return title.length > 88 ? `${title.slice(0, 88)}...` : title;
 }
 
 export function MaterialDetailPage() {
@@ -279,7 +278,7 @@ export function MaterialDetailPage() {
         <div className="material-related-list">
           {relatedConversations.map((conversation) => (
             <Link className="material-related-row" key={conversation.id} to={`/sessions/${conversation.id}`}>
-              <span>{getFirstUserMessage(conversation.messages)}</span>
+              <span>{sessionLabel(conversation)}</span>
               <small>{conversation.subject ?? "General"} · Study session #{conversation.id}</small>
             </Link>
           ))}

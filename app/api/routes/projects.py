@@ -23,6 +23,8 @@ from app.models.conversation import Conversation
 from app.models.project_profile import ProjectProfile
 from app.models.quiz import Quiz, QuizAttempt
 from app.schemas.project import (
+    LearningMapProgressUpdate,
+    ProjectMindMapUpdate,
     ProjectCoverImageOption,
     ProjectProfileRead,
     ProjectProgressRead,
@@ -30,6 +32,7 @@ from app.schemas.project import (
 )
 from app.schemas.quiz import QuizRead, WeakQuizResponse
 from app.services import s3_client
+from app.services.knowledge_tracing_service import knowledge_state_for_progress
 from app.services.llm_service import LLMService
 from app.services.stock_image_service import StockImageError, StockImageService
 
@@ -40,6 +43,59 @@ ALLOWED_COVER_MIME_TYPES = {
     "image/gif",
 }
 MAX_COVER_IMAGE_BYTES = 5 * 1024 * 1024
+LEARNING_MAP_STATUSES = {"not_started", "in_progress", "needs_review", "mastered"}
+
+
+def _validate_mind_map_payload(mind_map: dict[str, Any]) -> None:
+    if not isinstance(mind_map.get("subject"), str) or not mind_map["subject"].strip():
+        raise HTTPException(status_code=400, detail="Mind map subject is required.")
+    nodes = mind_map.get("nodes")
+    if not isinstance(nodes, list):
+        raise HTTPException(status_code=400, detail="Mind map nodes must be a list.")
+
+    ids: set[str] = set()
+    prerequisites_by_id: dict[str, list[str]] = {}
+    for index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            raise HTTPException(status_code=400, detail="Each mind map node must be an object.")
+        topic = str(node.get("topic", "")).strip()
+        node_id = str(node.get("id", "")).strip()
+        if not topic:
+            raise HTTPException(status_code=400, detail="Each topic needs a title.")
+        if not node_id:
+            raise HTTPException(status_code=400, detail="Each topic needs a stable ID.")
+        if node_id in ids:
+            raise HTTPException(status_code=400, detail="Mind map topic IDs must be unique.")
+        ids.add(node_id)
+        prerequisites = node.get("prerequisite_ids") or []
+        if not isinstance(prerequisites, list):
+            raise HTTPException(status_code=400, detail="Prerequisites must be a list.")
+        prerequisites_by_id[node_id] = [str(item) for item in prerequisites]
+        status_value = node.get("status")
+        if status_value is not None and status_value not in LEARNING_MAP_STATUSES:
+            raise HTTPException(status_code=400, detail="Invalid learning map status.")
+        node["order"] = int(node.get("order", index))
+
+    for node_id, prerequisites in prerequisites_by_id.items():
+        for prerequisite_id in prerequisites:
+            if prerequisite_id not in ids:
+                raise HTTPException(status_code=400, detail="Prerequisite topic does not exist.")
+            if prerequisite_id == node_id:
+                raise HTTPException(status_code=400, detail="A topic cannot require itself.")
+
+    def visits_cycle(start_id: str, current_id: str, seen: set[str]) -> bool:
+        for prerequisite_id in prerequisites_by_id.get(current_id, []):
+            if prerequisite_id == start_id:
+                return True
+            if prerequisite_id in seen:
+                continue
+            seen.add(prerequisite_id)
+            if visits_cycle(start_id, prerequisite_id, seen):
+                return True
+        return False
+
+    if any(visits_cycle(node_id, node_id, set()) for node_id in ids):
+        raise HTTPException(status_code=400, detail="This connection would create a circular prerequisite path.")
 
 logger = logging.getLogger(__name__)
 _project_settings = get_settings()
@@ -192,6 +248,7 @@ async def get_project_progress(
     struggled: set[str] = set()
     next_review: list[str] = []
     latest_summary_ts = None
+    profile_for_mastery = await _get_or_create_profile(session, user_id, subject)
 
     for c in conversations:
         if not c.summary:
@@ -213,6 +270,7 @@ async def get_project_progress(
         concepts_covered=sorted(covered),
         weak_areas=sorted(struggled),
         next_review=next_review,
+        knowledge_mastery=knowledge_state_for_progress(profile_for_mastery),
     )
 
 
@@ -223,6 +281,52 @@ async def get_project_profile(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> ProjectProfileRead:
     profile = await _get_or_create_profile(session, user_id, subject)
+    return await _hydrate_profile_cover_url(profile)
+
+
+@router.patch("/{subject}/learning-map/progress", response_model=ProjectProfileRead)
+async def update_learning_map_progress(
+    subject: str,
+    body: LearningMapProgressUpdate,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ProjectProfileRead:
+    node_id = body.node_id.strip()
+    if not node_id:
+        raise HTTPException(status_code=400, detail="Learning map node is required.")
+    if body.status not in LEARNING_MAP_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid learning map status.")
+
+    profile = await _get_or_create_profile(session, user_id, subject)
+    progress = dict(profile.learning_map_progress or {})
+    progress[node_id] = body.status
+    profile.learning_map_progress = progress
+    await session.commit()
+    await session.refresh(profile)
+    return await _hydrate_profile_cover_url(profile)
+
+
+@router.put("/{subject}/mindmap", response_model=ProjectProfileRead)
+async def update_project_mindmap(
+    subject: str,
+    body: ProjectMindMapUpdate,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ProjectProfileRead:
+    _validate_mind_map_payload(body.mind_map)
+    if body.learning_map_progress:
+        invalid_statuses = [
+            status_value for status_value in body.learning_map_progress.values()
+            if status_value not in LEARNING_MAP_STATUSES
+        ]
+        if invalid_statuses:
+            raise HTTPException(status_code=400, detail="Invalid learning map status.")
+
+    profile = await _get_or_create_profile(session, user_id, subject)
+    profile.mind_map = body.mind_map
+    profile.learning_map_progress = body.learning_map_progress or {}
+    await session.commit()
+    await session.refresh(profile)
     return await _hydrate_profile_cover_url(profile)
 
 
@@ -431,8 +535,8 @@ async def generate_weak_quiz(
         f"who has struggled with:\n{weak_list}{failed_section}\n\n"
         "Return ONLY a valid JSON array, no markdown fences, no explanation.\n"
         "Each item must follow one of these exact shapes:\n"
-        '{"question":"...","quiz_type":"multiple_choice","options":["A","B","C","D"],"correct_answer":"A","explanation":"..."}\n'
-        '{"question":"...","quiz_type":"short_answer","options":null,"correct_answer":"...","explanation":"..."}\n'
+        '{"question":"...","concept":"...","quiz_type":"multiple_choice","options":["A","B","C","D"],"correct_answer":"A","explanation":"..."}\n'
+        '{"question":"...","concept":"...","quiz_type":"short_answer","options":null,"correct_answer":"...","explanation":"..."}\n'
         "Rules: correct_answer for multiple_choice must be the exact text of one option. "
         "Include 3-4 multiple_choice and 1-2 short_answer. Target the weak areas specifically."
     )
@@ -469,6 +573,7 @@ async def generate_weak_quiz(
             quiz = Quiz(
                 conversation_id=practice_conv.id,
                 question=str(item["question"]),
+                concept=str(item.get("concept", "")).strip() or None,
                 quiz_type=str(item.get("quiz_type", "short_answer")),
                 options=item.get("options"),
                 correct_answer=str(item["correct_answer"]),
@@ -490,6 +595,218 @@ async def generate_weak_quiz(
         conversation_id=practice_conv.id,
         quizzes=[QuizRead.model_validate(q) for q in quizzes],
     )
+
+
+class GenerateQuizRequest(BaseModel):
+    count: int = Field(default=5, ge=1, le=10)
+    focus: str | None = Field(default=None, max_length=500)
+
+
+@router.post(
+    "/{subject}/quizzes/generate",
+    response_model=WeakQuizResponse,
+    dependencies=[_summary_rate_limit],
+)
+async def generate_subject_quiz(
+    subject: str,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    body: GenerateQuizRequest = GenerateQuizRequest(),
+) -> WeakQuizResponse:
+    profile = await _get_or_create_profile(session, user_id, subject)
+    notes_result = await session.execute(
+        select(KeyIdea.concept, KeyIdea.summary)
+        .where(KeyIdea.user_id == user_id, KeyIdea.subject == subject)
+        .order_by(KeyIdea.created_at.desc())
+        .limit(10)
+    )
+    notes = list(notes_result.all())
+
+    level_str = f" at {profile.level} level" if profile.level else ""
+    goals_str = f" The student's stated goals: {profile.goals}." if profile.goals else ""
+    focus_str = f" Focus the questions on: {body.focus.strip()}." if body.focus and body.focus.strip() else ""
+    notes_block = (
+        "\n\nRecent key concepts the student has been working on:\n"
+        + "\n".join(f"- {concept}: {summary}" for concept, summary in notes[:8])
+        if notes
+        else ""
+    )
+
+    prompt = (
+        f'Generate {body.count} quiz questions for a student studying "{subject}"{level_str}.{goals_str}{focus_str}'
+        f"{notes_block}\n\n"
+        "Return ONLY a valid JSON array, no markdown fences, no explanation.\n"
+        "Each item must follow one of these exact shapes:\n"
+        '{"question":"...","concept":"...","quiz_type":"multiple_choice","options":["A","B","C","D"],"correct_answer":"A","explanation":"..."}\n'
+        '{"question":"...","concept":"...","quiz_type":"short_answer","options":null,"correct_answer":"...","explanation":"..."}\n'
+        "Rules: correct_answer for multiple_choice must match one option exactly. "
+        "Mix multiple_choice and short_answer. Vary difficulty. Cover the subject broadly when no focus is given."
+    )
+
+    settings = get_settings()
+    llm = LLMService(
+        api_key=settings.llm_api_key,
+        model=settings.llm_model,
+        timeout_seconds=settings.llm_timeout_seconds,
+    )
+    lc_messages = llm.to_langchain_messages([
+        {"role": "system", "content": "You are a quiz generator. Output only valid JSON arrays, nothing else."},
+        {"role": "user", "content": prompt},
+    ])
+
+    response = await llm._llm.ainvoke(lc_messages)
+    raw = response.content if isinstance(response.content, str) else ""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    raw = raw.strip()
+
+    try:
+        quiz_data_list = json.loads(raw)
+        if not isinstance(quiz_data_list, list):
+            raise ValueError("Expected a JSON array")
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("Subject quiz JSON parse failed: %s", raw[:200])
+        raise HTTPException(status_code=502, detail="Failed to generate quiz questions. Please try again.")
+
+    practice_conv = Conversation(user_id=user_id, subject=subject)
+    session.add(practice_conv)
+    await session.flush()
+
+    quizzes: list[Quiz] = []
+    for item in quiz_data_list[: body.count]:
+        try:
+            quiz = Quiz(
+                conversation_id=practice_conv.id,
+                question=str(item["question"]),
+                concept=str(item.get("concept", "")).strip() or None,
+                quiz_type=str(item.get("quiz_type", "short_answer")),
+                options=item.get("options"),
+                correct_answer=str(item["correct_answer"]),
+                explanation=str(item.get("explanation", "")),
+            )
+            session.add(quiz)
+            quizzes.append(quiz)
+        except (KeyError, TypeError):
+            continue
+
+    if not quizzes:
+        raise HTTPException(status_code=502, detail="Failed to generate valid quiz questions. Please try again.")
+
+    await session.commit()
+    for q in quizzes:
+        await session.refresh(q)
+
+    return WeakQuizResponse(
+        conversation_id=practice_conv.id,
+        quizzes=[QuizRead.model_validate(q) for q in quizzes],
+    )
+
+
+class GenerateFlashcardsRequest(BaseModel):
+    count: int = Field(default=8, ge=1, le=20)
+    focus: str | None = Field(default=None, max_length=500)
+
+
+class GeneratedFlashcardsResponse(BaseModel):
+    created: int
+
+
+@router.post(
+    "/{subject}/flashcards/generate",
+    response_model=GeneratedFlashcardsResponse,
+    dependencies=[_summary_rate_limit],
+)
+async def generate_subject_flashcards(
+    subject: str,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    body: GenerateFlashcardsRequest = GenerateFlashcardsRequest(),
+) -> GeneratedFlashcardsResponse:
+    profile = await _get_or_create_profile(session, user_id, subject)
+    existing_result = await session.execute(
+        select(KeyIdea.concept)
+        .where(KeyIdea.user_id == user_id, KeyIdea.subject == subject)
+        .order_by(KeyIdea.created_at.desc())
+        .limit(40)
+    )
+    existing_concepts = {row[0].strip().lower() for row in existing_result.all() if row[0]}
+
+    level_str = f" at {profile.level} level" if profile.level else ""
+    focus_str = f" Focus on: {body.focus.strip()}." if body.focus and body.focus.strip() else ""
+    existing_block = (
+        "\n\nDo NOT repeat any of these concepts the student already has notes on:\n"
+        + "\n".join(f"- {c}" for c in list(existing_concepts)[:30])
+        if existing_concepts
+        else ""
+    )
+    prompt = (
+        f'Generate {body.count} flashcards for a student studying "{subject}"{level_str}.{focus_str}'
+        f"{existing_block}\n\n"
+        "Return ONLY a valid JSON array, no markdown fences, no explanation.\n"
+        'Each item: {"concept":"short term or question (under 80 chars)","summary":"1-2 sentence answer/definition the student should keep"}\n'
+        "Concepts should be diverse — cover different aspects of the subject."
+    )
+
+    settings = get_settings()
+    llm = LLMService(
+        api_key=settings.llm_api_key,
+        model=settings.llm_model,
+        timeout_seconds=settings.llm_timeout_seconds,
+    )
+    lc_messages = llm.to_langchain_messages([
+        {"role": "system", "content": "You are a flashcard generator. Output only valid JSON arrays, nothing else."},
+        {"role": "user", "content": prompt},
+    ])
+    response = await llm._llm.ainvoke(lc_messages)
+    raw = response.content if isinstance(response.content, str) else ""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    raw = raw.strip()
+    try:
+        card_data = json.loads(raw)
+        if not isinstance(card_data, list):
+            raise ValueError("Expected JSON array")
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("Flashcard JSON parse failed: %s", raw[:200])
+        raise HTTPException(status_code=502, detail="Failed to generate flashcards. Please try again.")
+
+    practice_conv = Conversation(user_id=user_id, subject=subject)
+    session.add(practice_conv)
+    await session.flush()
+
+    created = 0
+    for item in card_data[: body.count]:
+        try:
+            concept = str(item["concept"]).strip()[:255]
+            summary = str(item["summary"]).strip()[:10000]
+            if not concept or not summary:
+                continue
+            if concept.lower() in existing_concepts:
+                continue
+            idea = KeyIdea(
+                user_id=user_id,
+                conversation_id=practice_conv.id,
+                subject=subject,
+                concept=concept,
+                summary=summary,
+            )
+            session.add(idea)
+            created += 1
+            existing_concepts.add(concept.lower())
+        except (KeyError, TypeError):
+            continue
+
+    if created == 0:
+        raise HTTPException(status_code=502, detail="No new flashcards could be created. Try a different focus.")
+
+    await session.commit()
+    return GeneratedFlashcardsResponse(created=created)
 
 
 @router.post(

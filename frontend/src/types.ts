@@ -45,6 +45,8 @@ export interface Conversation {
   id: number;
   user_id: number;
   subject: string | null;
+  title: string | null;
+  title_manually_edited: boolean;
   is_lecture: boolean;
   created_at: string;
   messages: Message[];
@@ -150,6 +152,13 @@ export interface ChatEndEvent {
   };
 }
 
+export interface ChatConversationTitleEvent {
+  event: "conversation_title";
+  data: {
+    title: string;
+  };
+}
+
 export interface MessageTrace {
   latency_ms: number | null;
   retrieved_chunk_ids: number[] | null;
@@ -166,13 +175,34 @@ export interface ChatErrorEvent {
 }
 
 export interface MindMapNode {
+  id?: string;
   topic: string;
+  description?: string | null;
   subtopics: string[];
+  status?: LearningMapStatus;
+  order?: number;
+  parent_id?: string | null;
+  prerequisite_ids?: string[];
+  related_ids?: string[];
+  linked_note_ids?: number[];
+  linked_material_ids?: number[];
 }
 
 export interface MindMap {
   subject: string;
   nodes: MindMapNode[];
+}
+
+export type LearningMapStatus = "not_started" | "in_progress" | "needs_review" | "mastered";
+
+export interface KnowledgeStateEntry {
+  concept_id: string;
+  concept: string;
+  mastery: number;
+  attempts: number;
+  correct: number;
+  last_observed_at: string | null;
+  params: Record<string, number>;
 }
 
 export interface ProjectProfile {
@@ -187,6 +217,8 @@ export interface ProjectProfile {
   cover_image_photographer: string | null;
   cover_image_photographer_url: string | null;
   mind_map: MindMap | null;
+  learning_map_progress: Record<string, LearningMapStatus> | null;
+  knowledge_state: Record<string, KnowledgeStateEntry> | null;
   created_at: string;
 }
 
@@ -200,16 +232,78 @@ export interface ProjectCoverImageOption {
   source: string;
 }
 
+export interface Assignment {
+  id: number;
+  subject: string | null;
+  title: string;
+  description: string | null;
+  due_at: string;
+  source: "manual" | "canvas" | string;
+  source_uid: string | null;
+  source_url: string | null;
+  completed: boolean;
+  feed_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssignmentInput {
+  title: string;
+  due_at: string;
+  subject?: string | null;
+  description?: string | null;
+  source_url?: string | null;
+}
+
+export interface AssignmentUpdate {
+  title?: string;
+  due_at?: string;
+  subject?: string | null;
+  description?: string | null;
+  source_url?: string | null;
+  completed?: boolean;
+}
+
+export interface CalendarFeed {
+  id: number;
+  name: string;
+  url: string;
+  subject: string | null;
+  source: string;
+  last_synced_at: string | null;
+  created_at: string;
+}
+
+export interface CalendarFeedSyncResponse {
+  feed: CalendarFeed;
+  imported_count: number;
+  total_events: number;
+}
+
+export interface SmartReminder {
+  id: string;
+  kind: string;
+  severity: "overdue" | "urgent" | "soon" | "review" | string;
+  title: string;
+  body: string;
+  subject: string | null;
+  assignment_id: number | null;
+  due_at: string | null;
+}
+
 export interface QuizData {
   quiz_id: number;
   question: string;
+  concept?: string | null;
   quiz_type: "multiple_choice" | "short_answer";
   options: string[] | null;
+  message_id?: number | null;
 }
 
 export interface QuizRead extends QuizData {
   id: number;
   conversation_id: number;
+  message_id: number | null;
   created_at: string;
 }
 
@@ -217,6 +311,8 @@ export interface AttemptResult {
   is_correct: boolean;
   correct_answer: string;
   explanation: string;
+  concept?: string | null;
+  mastery?: number | null;
 }
 
 export interface ChatQuizEvent {
@@ -235,8 +331,7 @@ export interface ChatKeyIdeaEvent {
 
 export interface DiagramData {
   id: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  elements: any[];
+  source: string;
   title?: string;
 }
 
@@ -265,7 +360,14 @@ export interface ChatImageEvent {
   data: ImageData;
 }
 
-export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent | ChatImageEvent;
+export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatConversationTitleEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent | ChatImageEvent;
+
+export type KeyIdeaArtifactType = "text" | "diagram" | "image";
+
+export type KeyIdeaArtifactData =
+  | { kind: "text"; text: string; source_message_id?: number | null }
+  | { kind: "diagram"; source: string; title?: string | null }
+  | { kind: "image"; image_url: string; thumbnail_url?: string | null; caption?: string | null };
 
 export interface KeyIdea {
   id: number;
@@ -275,6 +377,8 @@ export interface KeyIdea {
   sr_repetitions: number;
   sr_due_date: string;
   created_at: string;
+  artifact_type?: KeyIdeaArtifactType | null;
+  artifact_data?: KeyIdeaArtifactData | null;
 }
 
 export interface SessionSummary {
@@ -332,6 +436,7 @@ export interface PracticeQuizItem {
   id: number;
   conversation_id: number;
   question: string;
+  concept?: string | null;
   quiz_type: "multiple_choice" | "short_answer";
   options: string[] | null;
   created_at: string;
@@ -351,4 +456,5 @@ export interface ProjectProgress {
   concepts_covered: string[];
   weak_areas: string[];
   next_review: string[];
+  knowledge_mastery: KnowledgeStateEntry[];
 }

@@ -1,5 +1,5 @@
 import { getToken } from "./auth";
-import type { AttemptResult, AuthResult, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, Material, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, SearchResponse, SessionSummary, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
+import type { Assignment, AssignmentInput, AssignmentUpdate, AttemptResult, AuthResult, CalendarFeed, CalendarFeedSyncResponse, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, KeyIdeaArtifactData, KeyIdeaArtifactType, LearningMapStatus, Material, MindMap, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, SearchResponse, SessionSummary, SmartReminder, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
 
 function resolveDefaultApiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -158,6 +158,15 @@ export async function getConversation(conversationId: number): Promise<Conversat
   return parseJson(response);
 }
 
+export async function updateConversationTitle(conversationId: number, title: string): Promise<Conversation> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}`, {
+    method: "PATCH",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ title }),
+  });
+  return parseJson(response);
+}
+
 export async function submitFeedback(request: FeedbackRequest): Promise<FeedbackResponse> {
   const response = await fetch(`${API_BASE_URL}/feedback`, {
     method: "POST",
@@ -187,6 +196,86 @@ export async function listMaterials(subject?: string): Promise<Material[]> {
     headers: buildHeaders(),
   });
   return parseJson(response);
+}
+
+export async function listAssignments(options?: { subject?: string; includeCompleted?: boolean }): Promise<Assignment[]> {
+  const params = new URLSearchParams();
+  if (options?.subject?.trim()) params.set("subject", options.subject.trim());
+  if (options?.includeCompleted) params.set("include_completed", "true");
+  const qs = params.toString();
+  const response = await fetch(`${API_BASE_URL}/assignments${qs ? `?${qs}` : ""}`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function createAssignment(input: AssignmentInput): Promise<Assignment> {
+  const response = await fetch(`${API_BASE_URL}/assignments`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return parseJson(response);
+}
+
+export async function updateAssignment(assignmentId: number, input: AssignmentUpdate): Promise<Assignment> {
+  const response = await fetch(`${API_BASE_URL}/assignments/${assignmentId}`, {
+    method: "PATCH",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return parseJson(response);
+}
+
+export async function deleteAssignment(assignmentId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/assignments/${assignmentId}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    await parseJson(response);
+  }
+}
+
+export async function listSmartReminders(): Promise<SmartReminder[]> {
+  const response = await fetch(`${API_BASE_URL}/assignments/reminders`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function listCalendarFeeds(): Promise<CalendarFeed[]> {
+  const response = await fetch(`${API_BASE_URL}/calendar-feeds`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function createCalendarFeed(input: { name: string; url: string; subject?: string | null }): Promise<CalendarFeedSyncResponse> {
+  const response = await fetch(`${API_BASE_URL}/calendar-feeds`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return parseJson(response);
+}
+
+export async function syncCalendarFeed(feedId: number): Promise<CalendarFeedSyncResponse> {
+  const response = await fetch(`${API_BASE_URL}/calendar-feeds/${feedId}/sync`, {
+    method: "POST",
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function deleteCalendarFeed(feedId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/calendar-feeds/${feedId}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    await parseJson(response);
+  }
 }
 
 interface PresignResponse {
@@ -375,6 +464,51 @@ export async function generateWeakQuiz(subject: string): Promise<WeakQuizRespons
   return parseJson(response);
 }
 
+export async function generateSubjectQuiz(
+  subject: string,
+  options: { count?: number; focus?: string | null } = {},
+): Promise<WeakQuizResponse> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/quizzes/generate`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ count: options.count ?? 5, focus: options.focus ?? null }),
+  });
+  return parseJson(response);
+}
+
+export async function createManualQuiz(input: {
+  subject?: string | null;
+  question: string;
+  concept?: string | null;
+  quiz_type: "multiple_choice" | "short_answer";
+  options?: string[] | null;
+  correct_answer: string;
+  explanation?: string;
+}): Promise<QuizRead> {
+  const response = await fetch(`${API_BASE_URL}/quizzes`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      ...input,
+      options: input.quiz_type === "multiple_choice" ? input.options ?? [] : null,
+      explanation: input.explanation ?? "",
+    }),
+  });
+  return parseJson(response);
+}
+
+export async function generateSubjectFlashcards(
+  subject: string,
+  options: { count?: number; focus?: string | null } = {},
+): Promise<{ created: number }> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/flashcards/generate`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ count: options.count ?? 8, focus: options.focus ?? null }),
+  });
+  return parseJson(response);
+}
+
 export async function getProjectProgress(subject: string): Promise<ProjectProgress> {
   const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/progress`, {
     headers: buildHeaders(),
@@ -386,6 +520,32 @@ export async function generateMindMap(subject: string): Promise<ProjectProfile> 
   const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/mindmap`, {
     method: "POST",
     headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function updateLearningMapProgress(
+  subject: string,
+  nodeId: string,
+  status: LearningMapStatus,
+): Promise<ProjectProfile> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/learning-map/progress`, {
+    method: "PATCH",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ node_id: nodeId, status }),
+  });
+  return parseJson(response);
+}
+
+export async function updateProjectMindMap(
+  subject: string,
+  mindMap: MindMap,
+  learningMapProgress: Record<string, LearningMapStatus>,
+): Promise<ProjectProfile> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/mindmap`, {
+    method: "PUT",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ mind_map: mindMap, learning_map_progress: learningMapProgress }),
   });
   return parseJson(response);
 }
@@ -428,6 +588,30 @@ export async function listAllKeyIdeas(subject?: string, q?: string): Promise<Key
   const qs = params.toString();
   const response = await fetch(`${API_BASE_URL}/key-ideas${qs ? `?${qs}` : ""}`, {
     headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function createKeyIdea(input: {
+  concept: string;
+  summary: string;
+  subject?: string | null;
+  artifact_type?: KeyIdeaArtifactType | null;
+  artifact_data?: KeyIdeaArtifactData | null;
+}): Promise<KeyIdea> {
+  const response = await fetch(`${API_BASE_URL}/key-ideas`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return parseJson(response);
+}
+
+export async function updateKeyIdea(ideaId: number, input: { concept: string; summary: string }): Promise<KeyIdea> {
+  const response = await fetch(`${API_BASE_URL}/key-ideas/${ideaId}`, {
+    method: "PATCH",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
   });
   return parseJson(response);
 }
@@ -479,11 +663,11 @@ export async function reviewFlashcard(cardId: number, quality: number): Promise<
   return parseJson(response);
 }
 
-export async function fetchSpeech(text: string): Promise<string> {
+export async function fetchSpeech(text: string, voice?: string): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/tts`, {
     method: "POST",
     headers: buildHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(voice ? { text, voice } : { text }),
   });
   if (!response.ok) {
     throw new Error(`TTS failed: ${response.status}`);

@@ -13,7 +13,11 @@ class Quiz(Base):
     conversation_id: Mapped[int] = mapped_column(
         ForeignKey("conversations.id", ondelete="CASCADE"), index=True, nullable=False
     )
+    message_id: Mapped[int | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     question: Mapped[str] = mapped_column(Text, nullable=False)
+    concept: Mapped[str | None] = mapped_column(String(255), nullable=True)
     quiz_type: Mapped[str] = mapped_column(String(50), nullable=False)
     options: Mapped[list | None] = mapped_column(JSON, nullable=True)
     correct_answer: Mapped[str] = mapped_column(Text, nullable=False)

@@ -4,11 +4,13 @@ import { RateLimitError, createConversation, fetchSpeech, streamChat } from "./a
 import type { ChatStreamEvent, DiagramData, ImageData, KeyIdea, RetrievedSource } from "./types";
 
 interface SpeechChunk {
-  transcript: string;
+  displayText: string;
+  spokenText: string;
   audioUrlPromise: Promise<string>;
   keyIdeas: KeyIdea[];
   diagrams: DiagramData[];
   images: ImageData[];
+  pauseAfterMs?: number;
 }
 
 export interface LectureSession {
@@ -26,6 +28,11 @@ export interface LectureSession {
   error: string | null;
 }
 
+interface SendOptions {
+  interrupt?: boolean;
+  speak?: boolean;
+}
+
 const EMPTY: LectureSession = {
   conversationId: null,
   agentThinking: false,
@@ -41,6 +48,69 @@ const EMPTY: LectureSession = {
   error: null,
 };
 
+const CODE_DISPLAY_SPOKEN_PROMPT = "Read the code I displayed.";
+const CODE_DISPLAY_PAUSE_MS = 10_000;
+
+function isCodeLike(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return /<!doctype\s+html|<html[\s>]|<\/[a-z][\w-]*>|^\s*(const|let|var|function|class|def|import|from|public|private|SELECT|INSERT|UPDATE|DELETE)\b/im.test(trimmed)
+    || /[{};]\s*$/.test(trimmed)
+    || trimmed.split("\n").filter((line) => /^\s{2,}\S/.test(line)).length >= 2;
+}
+
+function toCodeMarkdown(language: string | undefined, code: string): string {
+  const safeLanguage = language?.trim().replace(/[^\w-]/g, "") ?? "";
+  return `\`\`\`${safeLanguage}\n${code.trim()}\n\`\`\``;
+}
+
+function extractCodeDisplay(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const tripleFence = trimmed.match(/```([\w-]+)?\s*\n?([\s\S]*?)```/);
+  if (tripleFence && isCodeLike(tripleFence[2])) {
+    return toCodeMarkdown(tripleFence[1], tripleFence[2]);
+  }
+
+  const doubleFence = trimmed.match(/^``([\w-]+)?\s+([\s\S]*?)``$/);
+  if (doubleFence && isCodeLike(doubleFence[2])) {
+    return toCodeMarkdown(doubleFence[1], doubleFence[2]);
+  }
+
+  const languagePrefix = trimmed.match(/^(html|css|javascript|js|typescript|ts|tsx|jsx|python|py|sql|json|bash|sh)\s+([\s\S]+)$/i);
+  if (languagePrefix && isCodeLike(languagePrefix[2])) {
+    return toCodeMarkdown(languagePrefix[1].toLowerCase(), languagePrefix[2]);
+  }
+
+  if (isCodeLike(trimmed) && trimmed.length >= 40) {
+    return toCodeMarkdown(undefined, trimmed);
+  }
+
+  return null;
+}
+
+function hasOpenCodeFence(value: string): boolean {
+  const tripleFenceCount = value.match(/```/g)?.length ?? 0;
+  if (tripleFenceCount % 2 === 1) return true;
+
+  const trimmed = value.trim();
+  return trimmed.startsWith("``") && !trimmed.endsWith("``");
+}
+
+function cleanSpokenText(value: string): string {
+  return value
+    .replace(/```[\s\S]*?```/g, CODE_DISPLAY_SPOKEN_PROMPT)
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*checkpoint question\s*:\s*/gim, "")
+    .replace(/^\s*(checkpoint|question)\s*:\s*/gim, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function useLectureSession(subject: string | null) {
   const [session, setSession] = useState<LectureSession>(EMPTY);
 
@@ -49,8 +119,9 @@ export function useLectureSession(subject: string | null) {
   const isPlayingRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentAudioUrlRef = useRef<string | null>(null);
+  const pauseTimerRef = useRef<number | null>(null);
   const activeRef = useRef(false);
-  const abortRef = useRef<AbortController | null>(null);
+  const controllersRef = useRef<Set<AbortController>>(new Set());
   const lastPromptRef = useRef<string | null>(null);
   const playbackRateRef = useRef(1);
   // Incremented on every send() call; stale handleEvent closures detect mismatch and exit early.
@@ -67,6 +138,10 @@ export function useLectureSession(subject: string | null) {
   }
 
   function stopAudio() {
+    if (pauseTimerRef.current != null) {
+      window.clearTimeout(pauseTimerRef.current);
+      pauseTimerRef.current = null;
+    }
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.onended = null;
@@ -83,10 +158,8 @@ export function useLectureSession(subject: string | null) {
   }
 
   function abortInFlight() {
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
+    controllersRef.current.forEach((controller) => controller.abort());
+    controllersRef.current.clear();
   }
 
   function playNext() {
@@ -94,15 +167,30 @@ export function useLectureSession(subject: string | null) {
     const chunk = chunkQueueRef.current.shift();
     if (!chunk) {
       isPlayingRef.current = false;
-      setSession((s) => ({ ...s, agentSpeaking: false, transcript: "" }));
+      setSession((s) => ({
+        ...s,
+        agentSpeaking: false,
+        transcript: s.transcript.trim().startsWith("```") ? s.transcript : "",
+      }));
       return;
+    }
+
+    function advanceAfterPause() {
+      if (chunk?.pauseAfterMs) {
+        pauseTimerRef.current = window.setTimeout(() => {
+          pauseTimerRef.current = null;
+          playNext();
+        }, chunk.pauseAfterMs);
+        return;
+      }
+      playNext();
     }
 
     isPlayingRef.current = true;
     setSession((s) => ({
       ...s,
       agentSpeaking: true,
-      transcript: chunk.transcript,
+      transcript: chunk.displayText,
       keyIdeas: chunk.keyIdeas.length > 0 ? [...s.keyIdeas, ...chunk.keyIdeas] : s.keyIdeas,
       diagrams: chunk.diagrams.length > 0 ? [...s.diagrams, ...chunk.diagrams] : s.diagrams,
       images: chunk.images.length > 0 ? [...s.images, ...chunk.images] : s.images,
@@ -114,7 +202,7 @@ export function useLectureSession(subject: string | null) {
     chunk.audioUrlPromise
       .then((url) => {
         if (!url) {
-          playNext();
+          advanceAfterPause();
           return;
         }
         if (!isPlayingRef.current || !activeRef.current) {
@@ -130,34 +218,58 @@ export function useLectureSession(subject: string | null) {
           URL.revokeObjectURL(url);
           if (currentAudioUrlRef.current === url) currentAudioUrlRef.current = null;
           audioRef.current = null;
-          playNext();
+          advanceAfterPause();
         };
         audio.onerror = () => {
           URL.revokeObjectURL(url);
           if (currentAudioUrlRef.current === url) currentAudioUrlRef.current = null;
           audioRef.current = null;
-          playNext();
+          advanceAfterPause();
         };
         void audio.play().catch(() => {
           URL.revokeObjectURL(url);
           if (currentAudioUrlRef.current === url) currentAudioUrlRef.current = null;
-          playNext();
+          advanceAfterPause();
         });
       })
-      .catch(() => playNext());
+      .catch(() => advanceAfterPause());
   }
 
-  async function send(message: string) {
+  function appendArtifacts(keyIdeas: KeyIdea[], diagrams: DiagramData[], images: ImageData[]) {
+    if (keyIdeas.length === 0 && diagrams.length === 0 && images.length === 0) return;
+    setSession((s) => ({
+      ...s,
+      keyIdeas: keyIdeas.length > 0 ? [...s.keyIdeas, ...keyIdeas] : s.keyIdeas,
+      diagrams: diagrams.length > 0 ? [...s.diagrams, ...diagrams] : s.diagrams,
+      images: images.length > 0 ? [...s.images, ...images] : s.images,
+      currentKeyIdea: keyIdeas.length > 0 ? keyIdeas[keyIdeas.length - 1] : s.currentKeyIdea,
+      currentDiagram: diagrams.length > 0 ? diagrams[diagrams.length - 1] : s.currentDiagram,
+      currentImage: images.length > 0 ? images[images.length - 1] : s.currentImage,
+    }));
+  }
+
+  async function send(message: string, options: SendOptions = {}) {
+    const interrupt = options.interrupt ?? true;
+    const speak = options.speak ?? true;
+
     // Increment generation — any in-flight handleEvent from a previous call will see the
     // mismatch and return early, preventing stale events from mixing into this new stream.
-    const myGen = ++genRef.current;
+    const myGen = interrupt ? ++genRef.current : genRef.current;
 
-    abortInFlight();
-    stopAudio();
-    lastPromptRef.current = message;
+    if (interrupt) {
+      abortInFlight();
+      stopAudio();
+      lastPromptRef.current = message;
+    }
     const controller = new AbortController();
-    abortRef.current = controller;
-    setSession((s) => ({ ...s, agentThinking: true, agentSpeaking: false, transcript: "", error: null }));
+    controllersRef.current.add(controller);
+    setSession((s) => ({
+      ...s,
+      agentThinking: true,
+      agentSpeaking: interrupt ? false : s.agentSpeaking,
+      transcript: interrupt ? "" : s.transcript,
+      error: null,
+    }));
 
     let convId = convIdRef.current;
     if (!convId) {
@@ -180,18 +292,34 @@ export function useLectureSession(subject: string | null) {
 
     function enqueueChunk(text: string) {
       if (genRef.current !== myGen) return;
-      const trimmed = text.trim();
-      if (!trimmed) return;
+      const codeDisplay = extractCodeDisplay(text);
+      const displayText = codeDisplay ?? cleanSpokenText(text);
+      const spokenText = codeDisplay ? CODE_DISPLAY_SPOKEN_PROMPT : cleanSpokenText(text);
+      if (!displayText.trim() || !spokenText.trim()) return;
       const keyIdeas = pending.keyIdeas.splice(0);
       const diagrams = pending.diagrams.splice(0);
       const images = pending.images.splice(0);
-      const audioUrlPromise = fetchSpeech(trimmed).catch(() => "");
-      chunkQueueRef.current.push({ transcript: trimmed, audioUrlPromise, keyIdeas, diagrams, images });
+      if (!speak) {
+        appendArtifacts(keyIdeas, diagrams, images);
+        return;
+      }
+      const audioUrlPromise = fetchSpeech(spokenText).catch(() => "");
+      chunkQueueRef.current.push({
+        displayText,
+        spokenText,
+        audioUrlPromise,
+        keyIdeas,
+        diagrams,
+        images,
+        pauseAfterMs: codeDisplay ? CODE_DISPLAY_PAUSE_MS : undefined,
+      });
       if (!isPlayingRef.current) playNext();
     }
 
     function tryFlush() {
       const buf = tokenBuf.current;
+      if (hasOpenCodeFence(buf)) return;
+
       const pp = buf.indexOf("\n\n");
       if (pp >= 0) {
         enqueueChunk(buf.slice(0, pp));
@@ -214,6 +342,7 @@ export function useLectureSession(subject: string | null) {
       if (genRef.current !== myGen) return;
 
       if (event.event === "token") {
+        if (!speak) return;
         tokenBuf.current += event.data.delta;
         tryFlush();
       } else if (event.event === "sources") {
@@ -229,26 +358,24 @@ export function useLectureSession(subject: string | null) {
           created_at: new Date().toISOString(),
         });
       } else if (event.event === "diagram") {
-        pending.diagrams.push(event.data);
+        if (speak) {
+          pending.diagrams.push(event.data);
+        } else {
+          appendArtifacts([], [event.data], []);
+        }
       } else if (event.event === "image") {
-        pending.images.push(event.data);
+        if (speak) {
+          pending.images.push(event.data);
+        } else {
+          appendArtifacts([], [], [event.data]);
+        }
       } else if (event.event === "end") {
         enqueueChunk(tokenBuf.current);
         tokenBuf.current = "";
         const ki = pending.keyIdeas.splice(0);
         const dg = pending.diagrams.splice(0);
         const img = pending.images.splice(0);
-        if (ki.length > 0 || dg.length > 0 || img.length > 0) {
-          setSession((s) => ({
-            ...s,
-            keyIdeas: [...s.keyIdeas, ...ki],
-            diagrams: [...s.diagrams, ...dg],
-            images: [...s.images, ...img],
-            currentKeyIdea: ki.length > 0 ? ki[ki.length - 1] : s.currentKeyIdea,
-            currentDiagram: dg.length > 0 ? dg[dg.length - 1] : s.currentDiagram,
-            currentImage: img.length > 0 ? img[img.length - 1] : s.currentImage,
-          }));
-        }
+        appendArtifacts(ki, dg, img);
         setSession((s) => ({ ...s, agentThinking: false }));
       } else if (event.event === "error") {
         const friendly = event.data.rate_limited && event.data.retry_after_seconds
@@ -273,7 +400,7 @@ export function useLectureSession(subject: string | null) {
         agentThinking: false,
       }));
     } finally {
-      if (abortRef.current === controller) abortRef.current = null;
+      controllersRef.current.delete(controller);
     }
   }
 

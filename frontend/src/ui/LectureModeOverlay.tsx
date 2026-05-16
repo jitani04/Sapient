@@ -2,14 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 // Note: no global ESC listener here — DiagramCard has its own ESC handler for fullscreen,
 // and adding one here would close the lecture overlay when the user exits a fullscreen diagram.
 import { createPortal } from "react-dom";
-import { BookOpen, Brain, Gauge, Image as ImageIcon, Square } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Brain, Gauge, Image as ImageIcon, Square } from "lucide-react";
 
 import { useLectureSession } from "../useLectureSession";
 import { useLectureVoiceInput } from "../useLectureVoiceInput";
-import type { RetrievedSource } from "../types";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
+import { MarkdownText } from "./MarkdownText";
 
 interface Props {
   subject: string | null;
@@ -47,13 +46,8 @@ function paceInstruction(pace: LecturePace) {
 }
 
 function buildLecturePrompt(subject: string | null, pace: LecturePace) {
-  const topic = subject ? ` on ${subject}` : " on the topic I'm currently studying";
-  return `Give me a lecture${topic}. Introduce the core concepts one by one, explain each clearly with examples, and save key ideas as notes. Generate a concept diagram when it helps illustrate structure. ${paceInstruction(pace)} Cite relevant uploaded materials when available.`;
-}
-
-function sourceMaterialPath(source: RetrievedSource, fallbackSubject: string | null) {
-  const sourceSubject = source.subject ?? fallbackSubject;
-  return sourceSubject ? `/projects/${encodeURIComponent(sourceSubject)}/materials/${source.material_id}` : null;
+  const topic = subject ? ` for ${subject}` : "";
+  return `Start lecture mode${topic} by speaking first. Ask me, in one short natural sentence, what I want to cover today. Do not begin teaching, save key ideas, generate diagrams, or cite sources yet. Wait for my answer before continuing. Once I answer, teach the requested topic with this pacing: ${paceInstruction(pace)} Introduce or define at most 2 new concepts at a time, then pause or transition before continuing. Cite relevant uploaded materials when available. Use plain spoken text without markdown headings, bold markers, or labels like "Checkpoint Question:"; when checking understanding, ask the question naturally. When showing code, put only the code in a fenced code block so it can be displayed rather than read aloud.`;
 }
 
 export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose }: Props) {
@@ -92,7 +86,7 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
   function sendLectureMessage(message: string) {
     const trimmed = message.trim();
     if (!trimmed) return;
-    void send(`${trimmed}\n\nLecture controls: ${paceInstruction(lecturePace)} Cite relevant uploaded materials when available.`);
+    void send(`${trimmed}\n\nLecture controls: ${paceInstruction(lecturePace)} Introduce or define at most 2 new concepts at a time, then pause or transition before continuing. Cite relevant uploaded materials when available. When showing code, put only the code in a fenced code block so it can be displayed rather than read aloud.`);
   }
 
   function handleSend() {
@@ -108,11 +102,14 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
   }
 
   function handleCheckMe() {
-    sendLectureMessage("Pause the lecture and ask me one focused check-for-understanding question about the current concept. Wait for my answer before continuing.");
+    sendLectureMessage("Pause the lecture and ask me one focused check-for-understanding question about the current concept. Ask it naturally without saying or writing a label like 'Checkpoint Question'. Wait for my answer before continuing.");
   }
 
   function handleShowVisual() {
-    sendLectureMessage("Show the current concept visually. Use a real image when a photo/reference would help, otherwise generate a clear diagram before continuing the lecture.");
+    void send(
+      "Show the current concept visually. Use a real image when a photo/reference would help, otherwise generate a clear diagram. Only create and display the visual artifact; do not pause, restart, or continue the lecture text.",
+      { interrupt: false, speak: false },
+    );
   }
 
   function handleClose() {
@@ -171,6 +168,7 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
   const latestDiagram = currentDiagram ?? diagrams[diagrams.length - 1] ?? null;
   const latestImage = currentImage ?? images[images.length - 1] ?? null;
   const latestConcept = currentKeyIdea ?? keyIdeas[keyIdeas.length - 1] ?? null;
+  const transcriptIsCode = transcript.trim().startsWith("```");
   const notebookDate = useMemo(
     () => new Date().toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }),
     [],
@@ -265,7 +263,7 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
             {transcript && (
               <section className="lecture-live-block">
                 <div className="lecture-section-label">Now speaking</div>
-                <p className="lecture-live-handwriting">{transcript}</p>
+                <MarkdownText className="lecture-live-handwriting" children={transcript} />
               </section>
             )}
 
@@ -321,48 +319,13 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
 
             <div className="lecture-page-footer">
               <span>Ask follow-ups and the notes keep building.</span>
-              <span>{keyIdeas.length} note{keyIdeas.length === 1 ? "" : "s"}</span>
+              <span>
+                {keyIdeas.length} note{keyIdeas.length === 1 ? "" : "s"}
+                {sources.length > 0 ? ` · ${sources.length} source${sources.length === 1 ? "" : "s"}` : ""}
+              </span>
             </div>
           </div>
         </div>
-
-        <aside className="lecture-source-rail" aria-label="Lecture sources">
-          <div className="lecture-source-rail-head">
-            <div className="lecture-source-title-row">
-              <BookOpen size={16} />
-              <span>Sources</span>
-            </div>
-            <span className="lecture-source-count">{sources.length}</span>
-          </div>
-          {sources.length === 0 ? (
-            <p className="lecture-empty-sources">
-              Uploaded-material citations appear here when retrieval finds relevant context.
-            </p>
-          ) : (
-            <div className="lecture-source-list">
-              {sources.map((source) => {
-                const path = sourceMaterialPath(source, subject);
-                return (
-                  <article className="lecture-source-card" key={source.chunk_id}>
-                    <div className="lecture-source-card-top">
-                      <div className="lecture-source-filename">{source.material_filename}</div>
-                      <span className="lecture-source-score">{Math.round(source.similarity_score * 100)}%</span>
-                    </div>
-                    <div className="lecture-source-meta">
-                      {source.page_number ? `Page ${source.page_number}` : "Uploaded material"}
-                    </div>
-                    <p className="lecture-source-snippet">{source.snippet}</p>
-                    {path && (
-                      <Link className="lecture-source-link" to={path} onClick={handleClose}>
-                        Open source
-                      </Link>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </aside>
       </div>
 
       {error && (
@@ -391,7 +354,7 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
             ))}
           </div>
           <div className="lecture-current-text">
-            {transcript || (
+            {(transcriptIsCode ? "Read the code displayed above." : transcript) || (
               agentThinking
                 ? "Instructor is adding the next line to the notebook…"
                 : voiceSupported

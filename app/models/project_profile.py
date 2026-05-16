@@ -22,6 +22,8 @@ class ProjectProfile(Base):
     cover_image_photographer: Mapped[str | None] = mapped_column(String(255), nullable=True)
     cover_image_photographer_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     mind_map: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    learning_map_progress: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    knowledge_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
