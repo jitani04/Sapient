@@ -998,14 +998,17 @@ export function ChatPage() {
                 className="model-picker"
                 aria-label="Chat model"
                 title="Model used for this conversation"
-                value={conversation?.model ?? ""}
+                value={
+                  conversation?.model && modelsQuery.data.some((model) => model.id === conversation.model)
+                    ? conversation.model
+                    : modelsQuery.data[0]?.id ?? ""
+                }
                 disabled={!conversationId || modelMutation.isPending}
                 onChange={(e) => {
                   const value = e.target.value;
                   if (value) modelMutation.mutate(value);
                 }}
               >
-                {!conversation?.model && <option value="">Default</option>}
                 {modelsQuery.data.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
