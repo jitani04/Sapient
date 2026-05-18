@@ -2,8 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { FileQuestion } from "lucide-react";
 
-import { deleteMaterial, getMaterialExtractedText, getMaterialPreviewUrl, listConversations, listMaterials } from "../api";
-import { normalizeSubject } from "../subjects";
+import { deleteMaterial, getMaterialExtractedText, getMaterialPreviewUrl, listMaterials } from "../api";
 import { MarkdownText } from "./MarkdownText";
 
 function isMarkdownMime(mime: string): boolean {
@@ -29,11 +28,6 @@ function formatDateTime(value: string | null): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function sessionLabel(conversation: { title: string | null; subject: string | null; id: number }): string {
-  const title = conversation.title?.trim() || `${conversation.subject ?? "General"} study session`;
-  return title.length > 88 ? `${title.slice(0, 88)}...` : title;
 }
 
 export function MaterialDetailPage() {
@@ -89,11 +83,6 @@ export function MaterialDetailPage() {
     },
   });
 
-  const conversationsQuery = useQuery({
-    queryKey: ["conversations"],
-    queryFn: listConversations,
-  });
-
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deleteMaterial(id),
     onSuccess: async () => {
@@ -101,20 +90,6 @@ export function MaterialDetailPage() {
       navigate(projectMaterialsPath);
     },
   });
-
-  const relatedConversations = (conversationsQuery.data ?? [])
-    .filter((conversation) => {
-      if (!material?.subject) return conversation.subject === null;
-      return normalizeSubject(conversation.subject) === normalizeSubject(material.subject);
-    })
-    .sort((a, b) => b.id - a.id)
-    .slice(0, 6);
-
-  const statusClass: Record<string, string> = {
-    ready: "pill-green",
-    processing: "pill-blue",
-    failed: "pill-red",
-  };
 
   if (!Number.isInteger(parsedMaterialId) || parsedMaterialId <= 0) {
     return (
@@ -170,60 +145,15 @@ export function MaterialDetailPage() {
         </button>
       </div>
 
-      <div className="material-detail-grid">
-        <div className="content-card material-detail-main">
-          <div className="content-card-title">File status</div>
-          <div className="material-detail-status">
-            <span className={`pill ${statusClass[material.status] ?? "pill-gray"}`}>
-              {material.status}
-            </span>
-            {material.status === "processing" ? (
-              <p className="settings-copy">Sapient is still reading and indexing this file.</p>
-            ) : null}
-            {material.status === "ready" ? (
-              <p className="settings-copy">This file is ready to ground tutor answers and source retrieval.</p>
-            ) : null}
-            {material.status === "failed" ? (
-              <p className="error-text">{material.error_message ?? "Processing failed."}</p>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="content-card">
-          <div className="content-card-title">Details</div>
-          <div className="settings-row">
-            <span>Subject</span>
-            <strong>{material.subject ?? "General"}</strong>
-          </div>
-          <div className="settings-row">
-            <span>Type</span>
-            <strong>{material.mime_type}</strong>
-          </div>
-          <div className="settings-row">
-            <span>Uploaded</span>
-            <strong>{formatDateTime(material.created_at)}</strong>
-          </div>
-          <div className="settings-row">
-            <span>Processed</span>
-            <strong>{formatDateTime(material.processed_at)}</strong>
-          </div>
-          <div className="settings-row">
-            <span>Material ID</span>
-            <strong>#{material.id}</strong>
-          </div>
-          {material.subject ? (
-            <div className="settings-actions">
-              <Link className="button button-secondary" to={`/projects/${encodeURIComponent(material.subject)}`}>
-                Open subject
-              </Link>
-            </div>
-          ) : null}
-        </div>
-      </div>
+      {material.status === "processing" ? (
+        <p className="muted">Sapient is still reading and indexing this file.</p>
+      ) : null}
+      {material.status === "failed" ? (
+        <p className="error-text">{material.error_message ?? "Processing failed."}</p>
+      ) : null}
 
       {isReady ? (
         <div className="content-card">
-          <div className="content-card-title">Preview</div>
           {previewQuery.isLoading ? <p className="muted">Loading preview...</p> : null}
           {previewQuery.isError ? (
             <p className="error-text">Could not load preview. {(previewQuery.error as Error)?.message ?? ""}</p>
@@ -304,21 +234,6 @@ export function MaterialDetailPage() {
         </div>
       ) : null}
 
-      <div className="content-card">
-        <div className="content-card-title">Related study sessions</div>
-        {conversationsQuery.isLoading ? <p className="muted">Loading study sessions...</p> : null}
-        {!conversationsQuery.isLoading && relatedConversations.length === 0 ? (
-          <p className="muted">No study sessions are tagged with this material&apos;s subject yet.</p>
-        ) : null}
-        <div className="material-related-list">
-          {relatedConversations.map((conversation) => (
-            <Link className="material-related-row" key={conversation.id} to={`/sessions/${conversation.id}`}>
-              <span>{sessionLabel(conversation)}</span>
-              <small>{conversation.subject ?? "General"} · Study session #{conversation.id}</small>
-            </Link>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

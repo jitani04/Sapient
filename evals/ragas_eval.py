@@ -3,7 +3,9 @@
 Pipeline per question:
   1. retrieve_context(...) hits pgvector (your live retriever)
   2. LLMService generates an answer grounded on those chunks
-  3. Ragas scores faithfulness, answer_relevancy, context_precision, context_recall
+  3. OpenAI judges faithfulness, answer_relevancy, context_precision,
+     context_recall, and factual_correctness through the checkpointed Ragas
+     judge script
 
 Run:
     pip install -r evals/requirements.txt
@@ -19,36 +21,25 @@ import os
 from pathlib import Path
 from typing import Any
 
-from datasets import Dataset, load_dataset
+from datasets import load_dataset
 from google.genai import _api_client as google_genai_api_client
 from google.genai.errors import APIError
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from ragas import evaluate
-# The installed ragas version still expects initialized legacy metric objects
-# for evaluate(..., llm=..., embeddings=...). The newer collections API exports
-# metric classes/modules that are not directly compatible with this path.
-from ragas.metrics._answer_relevance import answer_relevancy
-from ragas.metrics._context_precision import context_precision
-from ragas.metrics._context_recall import context_recall
-from ragas.metrics._faithfulness import faithfulness
-from ragas.run_config import RunConfig
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.core.config import get_settings
 from app.db.session import get_session_factory
 from app.services import retriever
 from app.services.prompt_builder import build_responses_input
 from app.services.retriever import RetrievedChunk
+from evals.ragas_judge_checkpoint import main as judge_checkpoint_main
 
 
-SAMPLE_SIZE = int(os.getenv("EVAL_SAMPLE_SIZE", "20"))  # MUST match QA_SAMPLE_SIZE in ingest_dataset.py
+SAMPLE_SIZE = int(os.getenv("EVAL_SAMPLE_SIZE", "100"))
 
-# Gemini free-tier evals are more reliable when run slowly and with minimal thinking.
+# Gemini answer generation is more reliable when run slowly and with minimal thinking.
 GEN_MIN_INTERVAL_SEC = float(os.getenv("EVAL_GEN_MIN_INTERVAL_SEC", "20"))
 GEN_MAX_ATTEMPTS = int(os.getenv("EVAL_GEN_MAX_ATTEMPTS", "12"))
 GEN_MAX_WAIT_SEC = float(os.getenv("EVAL_GEN_MAX_WAIT_SEC", "300"))
-RAGAS_MAX_WORKERS = 1
-RAGAS_MAX_RETRIES = 10
-RAGAS_MAX_WAIT = 60
 CHECKPOINT_PATH = Path(os.getenv("EVAL_CHECKPOINT_PATH", "evals/ragas_answers_checkpoint.json"))
 
 
@@ -161,13 +152,27 @@ def load_checkpoint(*, sample_size: int) -> list[dict[str, Any]]:
     if not isinstance(rows, list):
         print(f"warning: ignoring malformed checkpoint at {CHECKPOINT_PATH}")
         return []
-    if saved_sample_size not in (None, sample_size):
+    if saved_sample_size == sample_size or saved_sample_size is None:
+        return rows[:sample_size]
+    if isinstance(saved_sample_size, int) and saved_sample_size < sample_size:
+        print(
+            f"extending checkpoint from sample_size={saved_sample_size} "
+            f"to current sample_size={sample_size}"
+        )
+        return rows[:saved_sample_size]
+    if isinstance(saved_sample_size, int) and saved_sample_size > sample_size:
+        print(
+            f"using first {sample_size} rows from larger checkpoint "
+            f"sample_size={saved_sample_size}"
+        )
+        return rows[:sample_size]
+    if saved_sample_size != sample_size:
         print(
             f"warning: ignoring checkpoint for sample_size={saved_sample_size}; "
             f"current sample_size={sample_size}"
         )
         return []
-    return rows
+    return rows[:sample_size]
 
 
 def save_checkpoint(*, rows: list[dict[str, Any]], sample_size: int) -> None:
@@ -218,12 +223,18 @@ async def main() -> None:
     api_key = settings.llm_api_key
     os.environ["GOOGLE_API_KEY"] = api_key
     chat_model = os.getenv("EVAL_CHAT_MODEL", settings.llm_model)
-    judge_model = os.getenv("EVAL_JUDGE_MODEL", chat_model)
 
     with open("evals/eval_corpus_map.json") as f:
         corpus_map = json.load(f)
     eval_user_id = corpus_map["user_id"]
     eval_subject = corpus_map["subject"]
+    ingested_sample_size = int(corpus_map.get("sample_size") or 0)
+    if ingested_sample_size and SAMPLE_SIZE > ingested_sample_size:
+        raise SystemExit(
+            f"EVAL_SAMPLE_SIZE={SAMPLE_SIZE} but corpus was ingested for only "
+            f"{ingested_sample_size} QA rows. Re-run `python -m evals.ingest_dataset` "
+            "with the same or larger EVAL_SAMPLE_SIZE."
+        )
 
     print(f"loading rag-mini-bioasq questions (first {SAMPLE_SIZE})...")
     qa_ds = load_dataset(
@@ -285,41 +296,8 @@ async def main() -> None:
             )
             save_checkpoint(rows=rows, sample_size=len(qa_ds))
 
-    eval_ds = Dataset.from_list(rows)
-
-    judge = build_chat_llm(
-        model=judge_model,
-        api_key=api_key,
-        timeout_seconds=settings.llm_timeout_seconds,
-    )
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model=settings.embedding_model, google_api_key=api_key
-    )
-
-    run_config = RunConfig(
-        max_workers=RAGAS_MAX_WORKERS,
-        max_retries=RAGAS_MAX_RETRIES,
-        max_wait=RAGAS_MAX_WAIT,
-    )
-    print(
-        f"\nrunning ragas with judge={judge_model} "
-        f"(workers={RAGAS_MAX_WORKERS}, retries={RAGAS_MAX_RETRIES}; "
-        f"this can take 10-20 min on free tier)..."
-    )
-    result = evaluate(
-        eval_ds,
-        metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
-        llm=judge,
-        embeddings=embeddings,
-        run_config=run_config,
-    )
-
-    print("\n=== results ===")
-    print(result)
-    df = result.to_pandas()
-    out = "evals/ragas_results.csv"
-    df.to_csv(out, index=False)
-    print(f"\nper-row scores written to {out}")
+    print("\nanswer generation complete; running OpenAI Ragas judge from checkpoint...")
+    await judge_checkpoint_main()
 
 
 if __name__ == "__main__":

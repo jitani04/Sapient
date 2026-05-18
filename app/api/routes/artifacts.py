@@ -15,7 +15,7 @@ from app.db.session import get_db_session
 from app.models.conversation import Conversation
 from app.models.key_idea import KeyIdea
 from app.services.conversation_service import get_conversation_for_user
-from app.services.llm_service import LLMService
+from app.services.llm_service import create_llm_service
 
 logger = logging.getLogger(__name__)
 _artifact_settings = get_settings()
@@ -266,12 +266,7 @@ async def generate_summary(
         f"TRANSCRIPT:\n{history_text}"
     )
 
-    settings = get_settings()
-    llm = LLMService(
-        api_key=settings.llm_api_key,
-        model=settings.llm_model,
-        timeout_seconds=settings.llm_timeout_seconds,
-    )
+    llm = create_llm_service()
     lc_messages = llm.to_langchain_messages([
         {"role": "system", "content": "You output only valid JSON. No markdown."},
         {"role": "user", "content": prompt},

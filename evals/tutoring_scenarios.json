@@ -192,6 +192,201 @@
         "Then introduce stack vs. heap, then malloc/free as the heap-allocation tool.",
         "Each step should check or invite the student before moving on."
       ]
+    },
+    {
+      "id": "direct_sql_joins",
+      "category": "direct_question",
+      "subject": "databases",
+      "student_message": "Can you explain the difference between inner joins and left joins?",
+      "ideal_behaviors": [
+        "Define only the two join types first, not every SQL join.",
+        "Use a small concrete example with two tables such as Students and Enrollments.",
+        "Emphasize what happens to unmatched rows in a left join.",
+        "Ask the student to predict one row of output before moving on."
+      ]
+    },
+    {
+      "id": "direct_css_box_model",
+      "category": "direct_question",
+      "subject": "web design",
+      "student_message": "What is the CSS box model?",
+      "ideal_behaviors": [
+        "Explain content, padding, border, and margin in order.",
+        "Use a visual or spatial analogy like an item, cushion, frame, and outside space.",
+        "Avoid introducing flexbox, grid, and positioning in the same answer.",
+        "Include one tiny CSS example or measurement example."
+      ]
+    },
+    {
+      "id": "direct_statistics_p_value",
+      "category": "direct_question",
+      "subject": "statistics",
+      "student_message": "What does a p-value actually mean?",
+      "ideal_behaviors": [
+        "State that a p-value is conditional on the null hypothesis being true.",
+        "Avoid saying it is the probability the hypothesis is true.",
+        "Use a simple concrete example such as a coin or treatment test.",
+        "Ask a quick check question about interpreting a low p-value."
+      ]
+    },
+    {
+      "id": "direct_oop_inheritance",
+      "category": "direct_question",
+      "subject": "computer science",
+      "student_message": "Can you explain inheritance in object-oriented programming?",
+      "ideal_behaviors": [
+        "Explain inheritance as sharing behavior from a parent class to a child class.",
+        "Use a concrete example such as Vehicle, Car, and Bike.",
+        "Mention the benefit and one caution without becoming a design-pattern lecture.",
+        "Invite the student to name another possible child class."
+      ]
+    },
+    {
+      "id": "miscon_correlation_causation",
+      "category": "misconception",
+      "subject": "statistics",
+      "student_message": "If two variables are strongly correlated, that means one caused the other, right?",
+      "ideal_behaviors": [
+        "Gently correct the causation claim while acknowledging correlation is useful evidence.",
+        "Explain possible confounding variables with a concrete example.",
+        "Distinguish prediction from causal explanation.",
+        "Ask what kind of study design would make causation more plausible."
+      ]
+    },
+    {
+      "id": "miscon_html_programming",
+      "category": "misconception",
+      "subject": "web design",
+      "student_message": "HTML is basically a programming language because it tells the browser what to do, right?",
+      "ideal_behaviors": [
+        "Clarify that HTML is a markup language for structure, not a programming language with logic/control flow.",
+        "Acknowledge why the student's intuition makes sense.",
+        "Contrast HTML with JavaScript using one concrete example.",
+        "Avoid belittling the distinction as just terminology."
+      ]
+    },
+    {
+      "id": "miscon_evolution_individuals",
+      "category": "misconception",
+      "subject": "biology",
+      "student_message": "Animals evolve during their lifetime when they need to adapt, right?",
+      "ideal_behaviors": [
+        "Correct that populations evolve across generations, not individual organisms within one lifetime.",
+        "Use a simple example involving variation and selection.",
+        "Distinguish adaptation as a population-level outcome from an individual acclimating.",
+        "Check whether the student can restate the generation idea."
+      ]
+    },
+    {
+      "id": "miscon_stack_heap_speed",
+      "category": "misconception",
+      "subject": "computer science",
+      "student_message": "The heap is just slower memory than the stack, right?",
+      "ideal_behaviors": [
+        "Correct the oversimplification: stack and heap differ mainly by allocation/lifetime rules, not physical memory type.",
+        "Use a concrete example of a local variable versus dynamically allocated object.",
+        "Mention performance only after explaining lifetime/ownership.",
+        "Connect back to why memory bugs happen."
+      ]
+    },
+    {
+      "id": "shortcut_css_exam",
+      "category": "shortcut_request",
+      "subject": "web design",
+      "student_message": "I have a quiz soon. Just give me the fastest way to remember flexbox vs grid.",
+      "ideal_behaviors": [
+        "Respect the time pressure and provide a concise comparison.",
+        "Give a memorable rule of thumb: flexbox for one-dimensional flow, grid for two-dimensional layout.",
+        "Include one concrete example for each.",
+        "Avoid a long layout lecture."
+      ]
+    },
+    {
+      "id": "shortcut_stats_formula",
+      "category": "shortcut_request",
+      "subject": "statistics",
+      "student_message": "Don't explain everything, just tell me when to use a t-test.",
+      "ideal_behaviors": [
+        "Answer directly with a compact use case.",
+        "Mention comparing means and the basic one-sample/two-sample/paired distinction.",
+        "Add one short caution about assumptions without overloading the student.",
+        "Offer to go deeper only at the end."
+      ]
+    },
+    {
+      "id": "vague_web_design",
+      "category": "vague_question",
+      "subject": "web design",
+      "student_message": "My website looks bad. Help?",
+      "ideal_behaviors": [
+        "Ask for a screenshot, link, or description of what feels wrong.",
+        "Offer a short diagnostic menu: spacing, hierarchy, contrast, alignment, responsiveness.",
+        "Avoid pretending to know the problem without seeing the site.",
+        "Give one immediate low-risk improvement the student can check."
+      ]
+    },
+    {
+      "id": "vague_database_project",
+      "category": "vague_question",
+      "subject": "databases",
+      "student_message": "I don't understand my database project.",
+      "ideal_behaviors": [
+        "Ask what part is confusing: schema design, SQL queries, normalization, or app integration.",
+        "Ask what the project is supposed to store or model.",
+        "Avoid launching into a generic database overview.",
+        "Offer to help break the project into entities, relationships, and queries."
+      ]
+    },
+    {
+      "id": "context_derivatives_product_rule",
+      "category": "context_aware",
+      "subject": "calculus",
+      "student_context": {
+        "weak_areas": ["chain rule", "recognizing composite functions"],
+        "strong_areas": ["power rule", "basic derivatives"],
+        "recent_topics": ["product rule"]
+      },
+      "student_message": "Can you help me with differentiating x^2 sin(3x)?",
+      "ideal_behaviors": [
+        "Use the student's strength in the power rule for the x^2 part.",
+        "Identify that this needs both product rule and chain rule.",
+        "Slow down specifically on differentiating sin(3x), since composite functions are weak.",
+        "Ask the student to try one sub-step before giving the whole derivative."
+      ]
+    },
+    {
+      "id": "context_css_layout",
+      "category": "context_aware",
+      "subject": "web design",
+      "student_context": {
+        "weak_areas": ["CSS box model", "spacing consistency"],
+        "strong_areas": ["HTML structure", "basic color choices"],
+        "recent_topics": ["responsive design"]
+      },
+      "student_message": "Why does my mobile layout feel cramped?",
+      "ideal_behaviors": [
+        "Connect the issue to spacing and the box model before introducing new layout systems.",
+        "Use the student's HTML strength by suggesting grouping related content semantically.",
+        "Offer a small checklist: padding, line length, gap, viewport width.",
+        "Avoid jumping directly to advanced responsive frameworks."
+      ]
+    },
+    {
+      "id": "context_statistics_confidence",
+      "category": "context_aware",
+      "subject": "statistics",
+      "student_context": {
+        "weak_areas": ["sampling distributions", "standard error"],
+        "strong_areas": ["mean and standard deviation"],
+        "recent_topics": ["confidence intervals"]
+      },
+      "student_message": "Why does a bigger sample size make a confidence interval narrower?",
+      "ideal_behaviors": [
+        "Start from the student's strength: means and standard deviation.",
+        "Introduce standard error carefully as variability of sample means.",
+        "Connect larger n to lower standard error and therefore narrower intervals.",
+        "Avoid overloading with full derivations unless asked."
+      ]
     }
   ]
 }

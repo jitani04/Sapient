@@ -1,5 +1,6 @@
 ragas>=0.2.6
 datasets>=3.0.0
 langchain-google-genai>=2.0.0
+openai>=1.51.0
 pandas>=2.0.0
 pyarrow>=15.0.0

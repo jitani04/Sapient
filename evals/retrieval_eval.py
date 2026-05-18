@@ -4,7 +4,7 @@ Computes recall@k, precision@k, and mean reciprocal rank (MRR) for the
 production retriever using the ground-truth `relevant_passage_ids` from the QA
 dataset. Unlike `ragas_eval.py`, this does not require an LLM judge — the only
 LLM-bound work per question is a single query embedding. The evaluation is
-therefore deterministic, cheap, and fast (~30 seconds for 20 questions).
+therefore deterministic and cheap.
 
 Run:
     python -m evals.ingest_dataset      # one-time: load corpus into pgvector
@@ -31,7 +31,7 @@ from app.db.session import get_session_factory
 from app.services import retriever
 
 
-SAMPLE_SIZE = int(os.getenv("EVAL_SAMPLE_SIZE", "20"))
+SAMPLE_SIZE = int(os.getenv("EVAL_SAMPLE_SIZE", "100"))
 K_VALUES = [int(k) for k in os.getenv("EVAL_K_VALUES", "1,3,5,10").split(",") if k.strip()]
 RESULTS_PATH = Path(os.getenv("EVAL_RESULTS_PATH", "evals/retrieval_results.csv"))
 
@@ -85,6 +85,13 @@ async def main() -> None:
         corpus_map = json.load(f)
     user_id = corpus_map["user_id"]
     subject = corpus_map["subject"]
+    ingested_sample_size = int(corpus_map.get("sample_size") or 0)
+    if ingested_sample_size and SAMPLE_SIZE > ingested_sample_size:
+        raise SystemExit(
+            f"EVAL_SAMPLE_SIZE={SAMPLE_SIZE} but corpus was ingested for only "
+            f"{ingested_sample_size} QA rows. Re-run `python -m evals.ingest_dataset` "
+            "with the same or larger EVAL_SAMPLE_SIZE."
+        )
     pid_to_mid = {str(k): int(v) for k, v in corpus_map["passage_id_to_material_id"].items()}
     mid_to_pid = {v: k for k, v in pid_to_mid.items()}
 

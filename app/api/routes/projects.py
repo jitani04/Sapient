@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_user_id
@@ -22,6 +22,7 @@ from app.models.preference_memory import PreferenceMemory
 from app.models.conversation import Conversation
 from app.models.project_profile import ProjectProfile
 from app.models.quiz import Quiz, QuizAttempt
+from app.models.resource import Resource
 from app.schemas.project import (
     LearningMapProgressUpdate,
     ProjectMindMapUpdate,
@@ -33,7 +34,7 @@ from app.schemas.project import (
 from app.schemas.quiz import QuizRead, WeakQuizResponse
 from app.services import s3_client
 from app.services.knowledge_tracing_service import knowledge_state_for_progress
-from app.services.llm_service import LLMService
+from app.services.llm_service import create_llm_service
 from app.services.stock_image_service import StockImageError, StockImageService
 
 ALLOWED_COVER_MIME_TYPES = {
@@ -118,9 +119,28 @@ async def _hydrate_profile_cover_url(profile: ProjectProfile) -> ProjectProfileR
     return read
 
 
+GENERAL_SUBJECT_LABELS = {"general", ""}
+
+
+def _is_general_subject(subject: str | None) -> bool:
+    """The UI labels NULL-subject conversations as 'General'. That label is
+    a display fallback, not a real subject — refuse to persist a profile for it."""
+    if subject is None:
+        return True
+    return subject.strip().lower() in GENERAL_SUBJECT_LABELS
+
+
 async def _get_or_create_profile(
     session: AsyncSession, user_id: int, subject: str
 ) -> ProjectProfile:
+    if _is_general_subject(subject):
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "'General' is a placeholder for untagged conversations, not a real subject. "
+                "Give the conversation a subject to enable project features."
+            ),
+        )
     result = await session.execute(
         select(ProjectProfile).where(
             ProjectProfile.user_id == user_id,
@@ -340,11 +360,32 @@ async def delete_project_subject(
     if not cleaned_subject:
         raise HTTPException(status_code=400, detail="Subject is required.")
 
-    subject_filter = func.lower(Conversation.subject) == cleaned_subject.lower()
+    # "General" is the UI label for NULL-subject content. Deleting it should
+    # also clear the user's untagged conversations and materials, so the sidebar
+    # group disappears after the delete.
+    deleting_general = _is_general_subject(cleaned_subject)
+    if deleting_general:
+        subject_filter = or_(
+            func.lower(Conversation.subject) == cleaned_subject.lower(),
+            Conversation.subject.is_(None),
+        )
+        material_filter = or_(
+            func.lower(Material.subject) == cleaned_subject.lower(),
+            Material.subject.is_(None),
+        )
+        profile_filter = or_(
+            func.lower(ProjectProfile.subject) == cleaned_subject.lower(),
+            ProjectProfile.subject.is_(None),
+        )
+    else:
+        subject_filter = func.lower(Conversation.subject) == cleaned_subject.lower()
+        material_filter = func.lower(Material.subject) == cleaned_subject.lower()
+        profile_filter = func.lower(ProjectProfile.subject) == cleaned_subject.lower()
+
     profile_result = await session.execute(
         select(ProjectProfile).where(
             ProjectProfile.user_id == user_id,
-            func.lower(ProjectProfile.subject) == cleaned_subject.lower(),
+            profile_filter,
         )
     )
     profiles = list(profile_result.scalars())
@@ -357,7 +398,7 @@ async def delete_project_subject(
     material_result = await session.execute(
         select(Material.id, Material.storage_path).where(
             Material.user_id == user_id,
-            func.lower(Material.subject) == cleaned_subject.lower(),
+            material_filter,
         )
     )
     material_rows = list(material_result.all())
@@ -398,10 +439,29 @@ async def delete_project_subject(
         await session.execute(delete(Message).where(Message.conversation_id.in_(conversation_ids)))
         await session.execute(delete(Conversation).where(Conversation.id.in_(conversation_ids)))
 
+    if deleting_general:
+        key_idea_subject_filter = or_(
+            func.lower(KeyIdea.subject) == cleaned_subject.lower(),
+            KeyIdea.subject.is_(None),
+        )
+        resource_subject_filter = or_(
+            func.lower(Resource.subject) == cleaned_subject.lower(),
+            Resource.subject == "",
+        )
+    else:
+        key_idea_subject_filter = func.lower(KeyIdea.subject) == cleaned_subject.lower()
+        resource_subject_filter = func.lower(Resource.subject) == cleaned_subject.lower()
+
     await session.execute(
         delete(KeyIdea).where(
             KeyIdea.user_id == user_id,
-            func.lower(KeyIdea.subject) == cleaned_subject.lower(),
+            key_idea_subject_filter,
+        )
+    )
+    await session.execute(
+        delete(Resource).where(
+            Resource.user_id == user_id,
+            resource_subject_filter,
         )
     )
 
@@ -515,12 +575,7 @@ async def generate_weak_quiz(
             detail="No weak areas detected yet. Complete some sessions and generate summaries first.",
         )
 
-    settings = get_settings()
-    llm = LLMService(
-        api_key=settings.llm_api_key,
-        model=settings.llm_model,
-        timeout_seconds=settings.llm_timeout_seconds,
-    )
+    llm = create_llm_service()
 
     weak_list = "\n".join(f"- {w}" for w in sorted(weak_areas)) if weak_areas else "None identified yet"
     failed_section = (
@@ -643,12 +698,7 @@ async def generate_subject_quiz(
         "Mix multiple_choice and short_answer. Vary difficulty. Cover the subject broadly when no focus is given."
     )
 
-    settings = get_settings()
-    llm = LLMService(
-        api_key=settings.llm_api_key,
-        model=settings.llm_model,
-        timeout_seconds=settings.llm_timeout_seconds,
-    )
+    llm = create_llm_service()
     lc_messages = llm.to_langchain_messages([
         {"role": "system", "content": "You are a quiz generator. Output only valid JSON arrays, nothing else."},
         {"role": "user", "content": prompt},
@@ -750,12 +800,7 @@ async def generate_subject_flashcards(
         "Concepts should be diverse — cover different aspects of the subject."
     )
 
-    settings = get_settings()
-    llm = LLMService(
-        api_key=settings.llm_api_key,
-        model=settings.llm_model,
-        timeout_seconds=settings.llm_timeout_seconds,
-    )
+    llm = create_llm_service()
     lc_messages = llm.to_langchain_messages([
         {"role": "system", "content": "You are a flashcard generator. Output only valid JSON arrays, nothing else."},
         {"role": "user", "content": prompt},
@@ -821,12 +866,7 @@ async def generate_mindmap(
 ) -> ProjectProfileRead:
     profile = await _get_or_create_profile(session, user_id, subject)
 
-    settings = get_settings()
-    llm = LLMService(
-        api_key=settings.llm_api_key,
-        model=settings.llm_model,
-        timeout_seconds=settings.llm_timeout_seconds,
-    )
+    llm = create_llm_service()
 
     level_str = f" at {profile.level} level" if profile.level else ""
     goals_str = f" Goals: {profile.goals}." if profile.goals else ""

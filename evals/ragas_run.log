@@ -1,0 +1,88 @@
+loading rag-mini-bioasq questions (first 100)...
+extending checkpoint from sample_size=20 to current sample_size=100
+resuming from checkpoint: 20/100 answers already generated
+running retriever + generator (model=gemini-2.5-flash, min interval 20.0s, ETA ~33 min)...
+  [21/100] What is the effect of ivabradine in heart failure after myocardial inf
+  [22/100] What is the mode of inheritance of Wilson's disease?
+  [23/100] Are transcription and splicing connected?
+  [24/100] What is the mode of inheritance of Facioscapulohumeral muscular dystro
+  [25/100] Is Alu hypomethylation associated with breast cancer?
+  [26/100] Which proteins participate in the formation of the ryanodine receptor 
+  [27/100] What kind of chromatography is HILIC?
+  [28/100] What is the effect of TRH on myocardial contractility?
+  [29/100] Proteomic analyses need prior knowledge of the organism complete genom
+  [30/100] What is the structural fold of bromodomain proteins?
+  [31/100] List the endoscopic diagnoses that have been reported in children with
+  [32/100] What are the outcomes of Renal sympathetic denervation?
+  [33/100] Which MAP kinase phosphorylates the transcription factor c-jun?
+  [34/100] What is the meaning of the acronym "TAILS" used in protein N-terminomi
+  [35/100] Do mutations of AKT1 occur in meningiomas?
+  [36/100] What are the main indications of lacosamide?
+  [37/100] Which fusion protein is involved in the development of Ewing sarcoma?
+  [38/100] List Hemolytic Uremic Syndrome Triad.
+  [39/100] Does physical activity influence gut hormones?
+  [40/100] What are the effects of depleting protein  km23-1 (DYNLRB1)  in a cell
+  [41/100] Treatment of which disease was investigated in the MR CLEAN study?
+  [42/100] Which factors activate zygotic gene expression during the maternal-to-
+  [43/100] Is irritable bowel syndrome more common in women with endometriosis?
+  [44/100] What is evaluated using the EORTC QLQ – INFO25 questionnaire?
+  [45/100] Does BNP increase after intensive exercise in athletes?
+  [46/100] What is the association of estrogen replacement therapy and intracrani
+  [47/100] Are there web based self management strategies for chronic pain ?
+  [48/100] Is Weaver syndrome similar to Sotos?
+  [49/100] Which enzyme is targeted by Evolocumab?
+  [50/100] Are ultraconserved elements often transcribed?
+  [51/100] What is the methyl donor of DNA (cytosine-5)-methyltransferases?
+  [52/100] Is peripheral neuroepithelioma related to Ewing sarcoma?
+  [53/100] Which signaling pathway does sonidegib inhibit?
+  [54/100] In which phase of the cell cycle arrest is impaired in Fanconi anemia?
+  [55/100] Which DNA sequences are more prone for the formation of R-loops?
+  [56/100] Mutation of which gene is implicated in the familial isolated pituitar
+  [57/100] which mutations of troponin C gene have been found to cause hypertroph
+  [58/100] What is known about the effect of acupuncture in smoking cessation ?
+  [59/100] Which post-translational histone modifications are characteristic of c
+  [60/100] GV1001 vaccine targets which enzyme?
+  [61/100] Which is the E3 ubiquitin ligase which ubiquitinates IkB leading to it
+  [62/100] Is c-met involved in the activation of the Akt pathway?
+  [63/100] Is pregnancy an additional risk during during H1N1 infection?
+  [64/100] Are long non coding RNAs as conserved in sequence as protein coding ge
+  [65/100] Mutation of which gene is implicated in the Brain-lung-thyroid syndrom
+  [66/100] What is clathrin?
+  [67/100] What are the main results of PRKAR1A Knockdown?
+  [68/100] Is TENS machine effective in pain?
+  [69/100] Is there any algorithm for enhancer identification from chromatin stat
+  [70/100] Which enzyme is targeted by the drug Imetelstat?
+  [71/100] Which interleukins are inhibited by Dupilumab?
+  [72/100] Which human genes are more commonly related to craniosynostosis?
+  [73/100] Are transcribed ultraconserved regions involved in cancer?
+  [74/100] In which breast cancer patients can palbociclib be used?
+  [75/100] Do patients with Pendred syndrome present congenital deafness?
+  [76/100] List side effects of SGLT2 inhibitors?
+  [77/100] Is CD56 useful in Ewing sarcoma prognosis?
+  [78/100] What is the method FASP used for?
+  [79/100] What is the role of extracellular signal-related kinases 1 and 2 (ERK1
+  [80/100] Are there any urine biomarkers for chronic kidney disease?
+  [81/100] What is being measured with an accelerometer in back pain patients
+  [82/100] List the releases of JASPAR database
+  [83/100] List symptoms of the IFAP syndrome.
+  [84/100] Which gene is required for the efficient function of clopidogrel?
+  [85/100] Is valproic acid effective for glioblastoma treatment?
+  [86/100] Which transcription factor is considered as a master regulator of lyso
+  [87/100] Which antibiotics target peptidoglycan biosynthesis?
+  [88/100] Can Levoxyl (levothyroxine sodium) cause insomnia?
+  [89/100] Is fatigue prevalent in patients receiving treatment for glioblastoma?
+  [90/100] List two common features of Tay syndrome.
+  [91/100] Which cell types are known to be driving Rheumatoid Arthritis?
+  [92/100] What is the association between personality trait of neuroticism and r
+  [93/100] What is the mode of action of everolimus?
+  [94/100] Have Quantitative Trait Loci affecting splicing (splicing QTLs) been l
+  [95/100] Which technique is used for detection of EWS/FLI1 fusion transcripts?
+  [96/100] Does the CTCF protein co-localize with cohesin?
+  [97/100] What is the application of the Bimolecular Fluorescence Complementatio
+  [98/100] Which pathological condition of the heart is known as hypertrophic car
+  [99/100] What is the genetic basis of Rubinstein-Taybi syndrome?
+  [100/100] What is the function of the viral KP4 protein?
+
+answer generation complete; running OpenAI Ragas judge from checkpoint...
+loaded 100 answers from evals/ragas_answers_checkpoint.json
+OpenAI eval judge key not set. Set EVAL_OPENAI_API_KEY or OPENAI_API_KEY with chat-completions and embeddings access.

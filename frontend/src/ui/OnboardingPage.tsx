@@ -17,7 +17,7 @@ export function OnboardingPage() {
   const queryClient = useQueryClient();
   const { data: user } = useQuery({ queryKey: ["me"], queryFn: getCurrentUser });
   const [name, setName] = useState(user?.name ?? "");
-  const [useCase, setUseCase] = useState(user?.use_case ?? "");
+  const [selectedUseCases, setSelectedUseCases] = useState<string[]>([]);
   const [customUseCase, setCustomUseCase] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -27,13 +27,32 @@ export function OnboardingPage() {
       setName(user.name);
     }
     if (user?.use_case) {
-      setUseCase(user.use_case);
+      const saved = user.use_case
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const known = saved.filter((item) => USE_CASES.includes(item));
+      const custom = saved.filter((item) => !USE_CASES.includes(item) && item !== "Other").join(", ");
+      setSelectedUseCases(custom ? [...known, "Other"] : known);
+      setCustomUseCase(custom);
     }
   }, [user?.name, user?.use_case]);
 
+  function toggleUseCase(option: string) {
+    setSelectedUseCases((current) =>
+      current.includes(option)
+        ? current.filter((item) => item !== option)
+        : [...current, option],
+    );
+  }
+
+  const finalUseCase = selectedUseCases
+    .filter((item) => item !== "Other")
+    .concat(selectedUseCases.includes("Other") && customUseCase.trim() ? [customUseCase.trim()] : [])
+    .join(", ");
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const finalUseCase = useCase === "Other" ? customUseCase : useCase;
     setError(null);
     setLoading(true);
     try {
@@ -75,9 +94,10 @@ export function OnboardingPage() {
             <div className="onboarding-choice-grid">
               {[...USE_CASES, "Other"].map((option) => (
                 <button
-                  className={`onboarding-choice ${useCase === option ? "selected" : ""}`}
+                  aria-pressed={selectedUseCases.includes(option)}
+                  className={`onboarding-choice ${selectedUseCases.includes(option) ? "selected" : ""}`}
                   key={option}
-                  onClick={() => setUseCase(option)}
+                  onClick={() => toggleUseCase(option)}
                   type="button"
                 >
                   {option}
@@ -86,7 +106,7 @@ export function OnboardingPage() {
             </div>
           </div>
 
-          {useCase === "Other" ? (
+          {selectedUseCases.includes("Other") ? (
             <label className="flow-field">
               <span>Tell us more</span>
               <input
@@ -101,7 +121,7 @@ export function OnboardingPage() {
           {error ? <p className="error-text">{error}</p> : null}
 
           <div className="flow-actions">
-            <button className="button button-primary" disabled={loading || !useCase} type="submit">
+            <button className="button button-primary" disabled={loading || !finalUseCase.trim()} type="submit">
               {loading ? "Saving…" : "Continue"}
             </button>
           </div>

@@ -4,12 +4,13 @@ import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowUp, Bookmark, BookmarkCheck, FileText, FolderOpen, Pause, Play, Plus, RotateCcw } from "lucide-react";
 
-import { RateLimitError, createConversation, createKeyIdea, deleteConversation, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listMaterials, streamChat, submitFeedback, uploadMaterial } from "../api";
+import { RateLimitError, createConversation, createKeyIdea, deleteConversation, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listConversationResources, listMaterials, listModels, streamChat, submitFeedback, updateConversationModel, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
-import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, QuizData, RetrievedSource, WebSource } from "../types";
+import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, QuizData, Resource, ResourceData, RetrievedSource, WebSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
+import { ResourceCard } from "./ResourceCard";
 import { LectureModeOverlay } from "./LectureModeOverlay";
 import { MarkdownText } from "./MarkdownText";
 import { QuizCard } from "./QuizCard";
@@ -330,14 +331,17 @@ export function ChatPage() {
   const [sseKeyIdeas, setSseKeyIdeas] = useState<KeyIdea[]>([]);
   const [sseDiagrams, setSseDiagrams] = useState<DiagramData[]>([]);
   const [sseImages, setSseImages] = useState<ImageData[]>([]);
+  const [sseResources, setSseResources] = useState<ResourceData[]>([]);
   // Artifacts streamed during the current assistant turn, awaiting an `end`
   // event so we can tag them with the assistant_message_id and render inline.
   const [savedSnippetKeys, setSavedSnippetKeys] = useState<Set<string>>(new Set());
   const [pendingDiagrams, setPendingDiagrams] = useState<DiagramData[]>([]);
   const [pendingImages, setPendingImages] = useState<ImageData[]>([]);
+  const [pendingResources, setPendingResources] = useState<ResourceData[]>([]);
   const [pendingQuizzes, setPendingQuizzes] = useState<QuizData[]>([]);
   const [messageDiagrams, setMessageDiagrams] = useState<Record<number, DiagramData[]>>({});
   const [messageImages, setMessageImages] = useState<Record<number, ImageData[]>>({});
+  const [messageResources, setMessageResources] = useState<Record<number, ResourceData[]>>({});
   const [messageQuizzes, setMessageQuizzes] = useState<Record<number, QuizData[]>>({});
   const [showNotes, setShowNotes] = useState(false);
   const [showMaterials, setShowMaterials] = useState(false);
@@ -360,6 +364,19 @@ export function ChatPage() {
     enabled: conversationId !== null,
   });
 
+  const modelsQuery = useQuery({
+    queryKey: ["models"],
+    queryFn: listModels,
+    staleTime: Infinity,
+  });
+
+  const modelMutation = useMutation({
+    mutationFn: (model: string) => updateConversationModel(conversationId!, model),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["conversation", conversationId], updated);
+    },
+  });
+
   const quizzesQuery = useQuery({
     queryKey: ["conversation-quizzes", conversationId],
     queryFn: () => getConversationQuizzes(conversationId!),
@@ -369,6 +386,12 @@ export function ChatPage() {
   const keyIdeasQuery = useQuery({
     queryKey: ["key-ideas", conversationId],
     queryFn: () => getKeyIdeas(conversationId!),
+    enabled: conversationId !== null,
+  });
+
+  const conversationResourcesQuery = useQuery({
+    queryKey: ["conversation-resources", conversationId],
+    queryFn: () => listConversationResources(conversationId!),
     enabled: conversationId !== null,
   });
   const historicalKeyIdeasIds = new Set((keyIdeasQuery.data ?? []).map((k) => k.id));
@@ -466,11 +489,14 @@ export function ChatPage() {
     setSseKeyIdeas([]);
     setSseDiagrams([]);
     setSseImages([]);
+    setSseResources([]);
     setPendingDiagrams([]);
     setPendingImages([]);
+    setPendingResources([]);
     setPendingQuizzes([]);
     setMessageDiagrams({});
     setMessageImages({});
+    setMessageResources({});
     setMessageQuizzes({});
     setShowNotes(false);
   }, [conversationId]);
@@ -773,6 +799,11 @@ export function ChatPage() {
       setPendingImages((images) => [...images, event.data]);
       return;
     }
+    if (event.event === "resource") {
+      setSseResources((r) => [...r, event.data]);
+      setPendingResources((r) => [...r, event.data]);
+      return;
+    }
     if (event.event === "key_idea") {
       setSseKeyIdeas((ks) => [...ks, {
         id: event.data.id,
@@ -811,6 +842,15 @@ export function ChatPage() {
         }
         return [];
       });
+      setPendingResources((pending) => {
+        if (pending.length > 0) {
+          setMessageResources((existing) => ({
+            ...existing,
+            [assistantMessageId]: [...(existing[assistantMessageId] ?? []), ...pending],
+          }));
+        }
+        return [];
+      });
       setPendingQuizzes((pending) => {
         if (pending.length > 0) {
           setMessageQuizzes((existing) => ({
@@ -824,6 +864,13 @@ export function ChatPage() {
         return [];
       });
       streamSmoothing.finish();
+      if (conversationId !== null) {
+        void queryClient.invalidateQueries({ queryKey: ["conversation-resources", conversationId] });
+      }
+      const subj = conversationQuery.data?.subject;
+      if (subj) {
+        void queryClient.invalidateQueries({ queryKey: ["subject-resources", subj] });
+      }
       return;
     }
     if (event.event === "error") {
@@ -946,6 +993,26 @@ export function ChatPage() {
             <div className="thread-topbar-sub">{subtitle}</div>
           </div>
           <div className="thread-topbar-actions">
+            {modelsQuery.data && modelsQuery.data.length > 0 && (
+              <select
+                className="model-picker"
+                aria-label="Chat model"
+                title="Model used for this conversation"
+                value={conversation?.model ?? ""}
+                disabled={!conversationId || modelMutation.isPending}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value) modelMutation.mutate(value);
+                }}
+              >
+                {!conversation?.model && <option value="">Default</option>}
+                {modelsQuery.data.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            )}
             {pomodoroEnabled && (
               <div className="focus-timer" role="group" aria-label="Focus timer">
                 <span
@@ -1108,6 +1175,15 @@ export function ChatPage() {
                 }
                 const msgDiagrams = messageDiagrams[msg.id] ?? [];
                 const msgImages = messageImages[msg.id] ?? [];
+                const liveResources = messageResources[msg.id] ?? [];
+                const historicalResourcesForMsg = (conversationResourcesQuery.data ?? []).filter(
+                  (r) => r.message_id === msg.id,
+                );
+                const liveResourceIds = new Set(liveResources.map((r) => r.id));
+                const msgResources: (Resource | ResourceData)[] = [
+                  ...historicalResourcesForMsg.filter((r) => !liveResourceIds.has(r.id)),
+                  ...liveResources,
+                ];
                 const liveQuizzes = messageQuizzes[msg.id] ?? [];
                 const historicalForMsg = historicalQuizzes.filter((q) => q.message_id === msg.id);
                 const liveIds = new Set(liveQuizzes.map((q) => q.quiz_id));
@@ -1204,6 +1280,18 @@ export function ChatPage() {
                       </div>
                     </div>
                   ))}
+                  {msgResources.map((r) => (
+                    <div key={`resource-${r.id}`} className="msg msg-artifact msg-artifact-resource">
+                      <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                      <div className="msg-body">
+                        <div className="msg-sender msg-artifact-label">
+                          <span className="msg-artifact-tag">{r.kind === "video" ? "Video" : "Article"}</span>
+                          <span className="msg-artifact-source">recommended by {tutorName}</span>
+                        </div>
+                        <ResourceCard resource={r} />
+                      </div>
+                    </div>
+                  ))}
                   {msgImages.map((image) => (
                     <div key={`image-${image.id}`} className="msg msg-artifact msg-artifact-image">
                       <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
@@ -1251,6 +1339,18 @@ export function ChatPage() {
                       <span className="msg-artifact-source">from {tutorName}</span>
                     </div>
                     <QuizCard quiz={q} onAnswered={handleQuizAnswered} onSkipped={handleQuizSkipped} />
+                  </div>
+                </div>
+              ))}
+              {pendingResources.map((r) => (
+                <div key={`pending-resource-${r.id}`} className="msg msg-artifact msg-artifact-resource">
+                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                  <div className="msg-body">
+                    <div className="msg-sender msg-artifact-label">
+                      <span className="msg-artifact-tag">{r.kind === "video" ? "Video" : "Article"}</span>
+                      <span className="msg-artifact-source">recommended by {tutorName}</span>
+                    </div>
+                    <ResourceCard resource={r} />
                   </div>
                 </div>
               ))}

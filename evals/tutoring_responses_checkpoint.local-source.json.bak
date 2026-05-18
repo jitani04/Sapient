@@ -1,0 +1,437 @@
+{
+  "direct_photosynthesis": {
+    "response": "That's a fantastic question to dive into! Photosynthesis is such a fundamental process in biology.\n\nTo start, what comes to mind for you when you hear the word \"photosynthesis\"? No need for a perfect definition, just your initial thoughts!",
+    "scores": {
+      "scaffolding": {
+        "score": 4,
+        "reason": "The tutor's initial question is a good first step in a scaffolded approach, aiming to understand the student's starting point before building the explanation."
+      },
+      "engagement": {
+        "score": 5,
+        "reason": "The tutor directly invites the student to think and share their initial thoughts, which is excellent engagement."
+      },
+      "misconception": {
+        "score": 5,
+        "reason": "No misconception was present in the student's message, and the tutor's response did not introduce any new errors."
+      },
+      "depth": {
+        "score": 4,
+        "reason": "The tutor has not yet provided content to assess depth, but the initial question is appropriately pitched for an undergraduate student."
+      },
+      "connections": {
+        "score": 3,
+        "reason": "The tutor has not yet had the opportunity to make connections, as they are still in the introductory phase of the conversation."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No sources were available, and the tutor's response did not make any factual claims requiring grounding."
+      }
+    }
+  },
+  "direct_recursion": {
+    "response": "That's a great question! Recursive functions are a fundamental concept in computer science.\n\nTo get started, what comes to mind for you when you hear the term \"recursive function\"? Have you encountered recursion in any other context before?",
+    "scores": {
+      "scaffolding": {
+        "score": 2,
+        "reason": "The tutor has not yet started breaking down the topic into steps or leading through reasoning; they are gathering initial information."
+      },
+      "engagement": {
+        "score": 5,
+        "reason": "The tutor immediately invites the student to think and share their current understanding with two probing questions."
+      },
+      "misconception": {
+        "score": 5,
+        "reason": "No misconception was present in the student's message, and the tutor's response did not introduce any errors."
+      },
+      "depth": {
+        "score": 3,
+        "reason": "The tutor has not yet provided any content to assess for depth, but the introductory remarks and questions are appropriate for the level."
+      },
+      "connections": {
+        "score": 5,
+        "reason": "The tutor explicitly asks about the student's prior encounters with recursion, aiming to connect to existing knowledge."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No specific factual claims were made that would require grounding in sources."
+      }
+    }
+  },
+  "direct_chain_rule": {
+    "response": "That's a great question! The chain rule is a fundamental concept in calculus.\n\nTo start, what do you already know about derivatives in general? Have you encountered situations where finding the derivative of a function seemed a bit more complex than usual?",
+    "scores": {
+      "scaffolding": {
+        "score": 4,
+        "reason": "The tutor begins by assessing prior knowledge, which is a good initial step in a scaffolded approach to teaching a new concept."
+      },
+      "engagement": {
+        "score": 5,
+        "reason": "The tutor actively invites the student to recall prior knowledge and reflect on past experiences, fostering active engagement."
+      },
+      "misconception": {
+        "score": 5,
+        "reason": "The student's initial question contained no misconceptions, and the tutor's response did not introduce any errors."
+      },
+      "depth": {
+        "score": 4,
+        "reason": "The initial questions are appropriately pitched for an undergraduate student beginning to discuss a calculus concept."
+      },
+      "connections": {
+        "score": 5,
+        "reason": "The tutor directly prompts the student to connect the new topic to their existing knowledge of derivatives and past problem-solving experiences."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No sources were provided for this scenario, and the tutor's response did not make any factual claims requiring external grounding."
+      }
+    }
+  },
+  "direct_sky_blue": {
+    "response": "That's a classic question that touches on some interesting physics!\n\nTo get started, what do you already know about why we see different colors, or what light is made of?",
+    "scores": {
+      "scaffolding": {
+        "score": 4,
+        "reason": "The tutor begins by asking for the student's prior knowledge, which is an excellent first step in scaffolding, though no content steps have been provided yet."
+      },
+      "engagement": {
+        "score": 5,
+        "reason": "The tutor immediately invites the student to think and share their existing knowledge with a direct probing question."
+      },
+      "misconception": {
+        "score": 5,
+        "reason": "The student's message contained no misconception, and the tutor's response did not introduce any errors."
+      },
+      "depth": {
+        "score": 4,
+        "reason": "While no content is delivered yet, the framing of the initial questions is appropriate for an undergraduate-level discussion, setting the stage for suitable depth."
+      },
+      "connections": {
+        "score": 5,
+        "reason": "The tutor directly attempts to connect to the student's existing knowledge by asking what they already know about light and color."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No factual claims were made by the tutor in this initial response, so grounding is not applicable at this stage."
+      }
+    }
+  },
+  "direct_mitosis": {
+    "response": "That's a great question! Mitosis is a fundamental process in biology.\n\nTo start, what do you already know or remember about mitosis? No worries if it's just a little bit, every bit helps!",
+    "scores": {
+      "scaffolding": {
+        "score": 2,
+        "reason": "The tutor has not yet begun to break down the topic into steps, but is setting the stage to do so by assessing prior knowledge."
+      },
+      "engagement": {
+        "score": 5,
+        "reason": "The tutor directly invites the student to share their prior knowledge, which is highly engaging."
+      },
+      "misconception": {
+        "score": 5,
+        "reason": "No misconception was present in the student's message, and the tutor's response did not introduce any errors."
+      },
+      "depth": {
+        "score": 3,
+        "reason": "The response is appropriate as an opening, but it doesn't yet demonstrate depth regarding the topic of mitosis itself."
+      },
+      "connections": {
+        "score": 4,
+        "reason": "The tutor attempts to connect to the student's existing knowledge by asking what they already know about the topic."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No factual claims were made in the response that required grounding."
+      }
+    }
+  },
+  "miscon_heat_temp": {
+    "response": "That's a really common thought, and it's great you're thinking about it! Many people use \"heat\" and \"temperature\" interchangeably in everyday conversation.\n\nTo start, what comes to mind when you think about the *difference* between them, if there is one? Or, how would you describe each one in your own words?",
+    "scores": {
+      "scaffolding": {
+        "score": 4,
+        "reason": "The tutor breaks down the learning process by first acknowledging the student's thought and then prompting them to articulate their current understanding, rather than immediately providing the full explanation."
+      },
+      "engagement": {
+        "score": 5,
+        "reason": "The tutor actively invites the student to think and participate by asking probing questions about their understanding of the difference between heat and temperature."
+      },
+      "misconception": {
+        "score": 2,
+        "reason": "While the tutor gently acknowledges the commonality of the misconception, they do not begin to correct it or distinguish the terms in this initial response."
+      },
+      "depth": {
+        "score": 3,
+        "reason": "The response is appropriate as an opening, but it does not yet delve into the conceptual depth required to explain the difference between heat and temperature."
+      },
+      "connections": {
+        "score": 4,
+        "reason": "The tutor connects to the student's existing knowledge by asking for their own definitions and acknowledges the common everyday usage of the terms."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No specific factual claims are made in this introductory response that would require grounding to external sources."
+      }
+    }
+  },
+  "miscon_plant_food_soil": {
+    "response": "That's a great start! You've hit on some key components.\n\nCould you tell me a little more about what you mean by \"making their food\"? What exactly do you think that \"food\" is, and how do the sunlight, water, and soil nutrients contribute to making it?",
+    "scores": {
+      "scaffolding": {
+        "score": 4,
+        "reason": "The tutor uses probing questions to guide the student to articulate their current understanding, which is a crucial first step in scaffolding a correction rather than dumping the answer."
+      },
+      "engagement": {
+        "score": 5,
+        "reason": "The tutor uses multiple probing questions to invite the student to elaborate on their thinking and define key terms."
+      },
+      "misconception": {
+        "score": 1,
+        "reason": "While acknowledging correct parts, the tutor fails to identify or gently correct the specific misconception about soil as a primary food source in this turn."
+      },
+      "depth": {
+        "score": 5,
+        "reason": "The response is a set of clarifying questions, which is appropriate for the current stage of interaction and doesn't introduce content that could be too shallow or too deep."
+      },
+      "connections": {
+        "score": 1,
+        "reason": "The response consists solely of clarifying questions and does not make any connections to new material, analogies, or prior knowledge."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "The response contains no factual claims that would require grounding."
+      }
+    }
+  },
+  "miscon_division_zero": {
+    "response": "That's an interesting thought! It sounds like you're thinking about what happens as numbers get smaller and smaller.\n\nTo get us started, what kind of numbers are you usually working with in your math studies? For example, are you thinking about whole numbers, fractions, or something else?",
+    "scores": {
+      "scaffolding": {
+        "score": 2,
+        "reason": "The tutor asks a clarifying question to understand the student's context, which is a step, but doesn't yet break down the mathematical concept or lead the student through reasoning about the division process itself."
+      },
+      "engagement": {
+        "score": 5,
+        "reason": "The tutor asks a direct, open-ended question that invites the student to provide more information and think about their context."
+      },
+      "misconception": {
+        "score": 1,
+        "reason": "The tutor acknowledges the student's thought but does not identify or correct the core misconception about reaching zero in this turn."
+      },
+      "depth": {
+        "score": 2,
+        "reason": "The response is a conversational opener and does not yet delve into the mathematical concept, making it very shallow in terms of content."
+      },
+      "connections": {
+        "score": 1,
+        "reason": "The tutor does not make any connections to analogies, prior topics, or the student's existing knowledge in this initial response."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No sources were available or needed for this conceptual math question, and the tutor made no factual claims requiring grounding."
+      }
+    }
+  },
+  "miscon_newton_third_cancel": {
+    "response": "That's a really insightful question, and it's a common point of confusion when first learning about Newton's Third Law!\n\nTo start, could you tell me a bit more about what you understand about *where* these \"equal and opposite\" forces act? Do they act on the same object, or on different objects?",
+    "scores": {
+      "scaffolding": {
+        "score": 4,
+        "reason": "The tutor breaks down the problem by asking a guiding question that directs the student to the core of their misconception, rather than providing the full answer immediately."
+      },
+      "engagement": {
+        "score": 5,
+        "reason": "The tutor directly invites the student to articulate their understanding with a probing question, fostering active thinking."
+      },
+      "misconception": {
+        "score": 4,
+        "reason": "The tutor clearly identifies the student's misconception regarding where the forces act and gently guides them to address it through a targeted question."
+      },
+      "depth": {
+        "score": 5,
+        "reason": "The response is perfectly matched to the student's conceptual question, neither too shallow nor overly complex, and uses appropriate vocabulary."
+      },
+      "connections": {
+        "score": 2,
+        "reason": "While acknowledging the question as insightful and common, the response does not explicitly connect the material to analogies, prior topics, or the student's existing physics knowledge."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No sources were provided or required for this conceptual question, and the tutor made no ungrounded factual claims."
+      }
+    }
+  },
+  "shortcut_integral": {
+    "response": "I understand you're eager to get the answer quickly! My goal as your tutor is to help you learn and understand the concepts deeply, which often involves guiding you to the solution rather than just providing it. This approach helps build a stronger foundation.\n\nLet's tackle the integral of $x^2$ together. Do you remember any general rules for integrating power functions, like $x^n$?",
+    "scores": {
+      "scaffolding": {
+        "score": 1,
+        "reason": "The tutor explicitly ignored the student's request for the answer and instead asked another question, failing to provide the requested information or lead directly to it."
+      },
+      "engagement": {
+        "score": 2,
+        "reason": "While the tutor attempts to engage with a question, it directly contradicts the student's explicit request to 'stop asking me questions' and just provide the answer."
+      },
+      "misconception": {
+        "score": 5,
+        "reason": "No misconception was present in the student's message, and the tutor's response did not introduce any new errors."
+      },
+      "depth": {
+        "score": 1,
+        "reason": "The tutor's response completely avoids providing the requested answer or any direct content, making it too shallow for the student's direct question."
+      },
+      "connections": {
+        "score": 1,
+        "reason": "The tutor's response does not provide new material or make explicit connections to analogies, prior topics, or the student's existing knowledge."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No sources were available for this scenario, and the tutor's response did not make any factual claims requiring grounding."
+      }
+    }
+  },
+  "shortcut_diabetes_test": {
+    "response": "I understand you've got a test coming up soon and want to get a good grasp on diabetes mellitus quickly! It's a really important topic in biology.\n\nTo help you best, could you tell me what you already know or what comes to mind when you hear \"diabetes mellitus\"? No worries if it's not much, just a starting point!",
+    "scores": {
+      "scaffolding": {
+        "score": 1,
+        "reason": "The tutor did not break down the topic or provide any steps towards the requested answer; instead, they introduced a new step by asking about prior knowledge, which delays providing the requested information."
+      },
+      "engagement": {
+        "score": 3,
+        "reason": "The tutor did invite the student to think by asking what they already know, but this approach was explicitly discouraged by the ideal behaviors for this time-sensitive scenario."
+      },
+      "misconception": {
+        "score": 5,
+        "reason": "No misconception was present in the student's message, and the tutor did not introduce any errors."
+      },
+      "depth": {
+        "score": 1,
+        "reason": "The tutor did not provide any information about the topic, thus failing to match the requested depth or provide any content at all."
+      },
+      "connections": {
+        "score": 1,
+        "reason": "The tutor did not provide any new material or make any connections; instead, they asked the student to recall existing knowledge."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No sources were available, and the tutor made no factual claims requiring grounding."
+      }
+    }
+  },
+  "vague_biology": {
+    "response": "Hello! I can certainly help you with biology.\n\nTo start, what topic in biology are you currently studying, or what question do you have today?",
+    "scores": {
+      "scaffolding": {
+        "score": 5,
+        "reason": "The tutor effectively scaffolds the interaction by asking for clarification, which is the appropriate first step for a vague question."
+      },
+      "engagement": {
+        "score": 5,
+        "reason": "The tutor directly engages the student by asking them to specify their topic or question, prompting them to articulate their needs."
+      },
+      "misconception": {
+        "score": 5,
+        "reason": "The student's message contained no misconception, and the tutor's response did not introduce any errors."
+      },
+      "depth": {
+        "score": 5,
+        "reason": "The tutor's response appropriately matches the shallow depth of the student's vague question by seeking more specific information."
+      },
+      "connections": {
+        "score": 5,
+        "reason": "The tutor's response is an initial query for clarification, so there is no new material yet to connect to prior knowledge or analogies."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "The tutor's response contains no factual claims that would require grounding in sources."
+      }
+    }
+  },
+  "vague_derivatives": {
+    "response": "That's a really common point where students start to feel a bit stuck, but I promise we can make sense of them together! Derivatives are a fundamental concept in calculus, and at their heart, they help us understand how things change.\n\nLet's start with the core idea:\n\n1.  A **derivative** tells us the **instantaneous rate of change** of a function.\n    *   Think of it like this: if you're driving a car, your speedometer tells you your speed *at that exact moment*. That's an instantaneous rate of change. It's different from your average speed over an entire trip.\n    *   **Example**: Imagine a function that describes the distance you've traveled over time. If `s(t)` is your distance at time `t`, then the derivative `s'(t)` (read as \"s-prime of t\") would tell you your *instantaneous speed* at any given time `t`. So, if `s(t) = t^2` (meaning you're speeding up), `s'(t) = 2t` tells you your speed is `2t` at time `t`. At `t=3` seconds, your instantaneous speed is `2*3 = 6` units/second.\n\n2.  Geometrically, the derivative represents the **slope of the tangent line** to a curve at a specific point.\n    *   A **tangent line** is a straight line that just touches the curve at a single point, without crossing through it at that point. It basically shows the direction the curve is heading *at that exact spot*.\n    *   **Example**: Consider the graph of `y = x^2`. If you pick a point on this curve, say `(1, 1)`, and draw a line that just grazes the curve at that point, the steepness (or slope) of that line is given by the derivative of `x^2` evaluated at `x=1`. The derivative of `x^2` is `2x`. So, at `x=1`, the slope of the tangent line is `2*1 = 2`. This means the curve is rising with a slope of 2 right at that point.\n\nHere's a simple visualization of a tangent line:\n```mermaid\ngraph TD\n    A[Curve: y = x^2] --> B(Point P: (1,1))\n    B --> C(Tangent Line at P)\n    C -- has slope --> D(Derivative's value at P)\n```\nThe line \"C\" just touches the curve \"A\" at point \"B\", and its steepness is exactly what the derivative calculates for that point.\n\nDoes thinking about derivatives as an \"instantaneous rate of change\" and the \"slope of a tangent line\" help clarify things a bit? We can go deeper into either of these ideas, or continue to the next two main principles if you'd like!",
+    "scores": {
+      "scaffolding": {
+        "score": 3,
+        "reason": "The tutor breaks down the concept into two main ideas with examples, but it delivers a significant amount of information upfront rather than first probing the student's specific difficulty."
+      },
+      "engagement": {
+        "score": 4,
+        "reason": "The tutor uses relatable analogies and ends with a direct question inviting the student to reflect and choose the next learning path, though it delivers a significant explanation before probing."
+      },
+      "misconception": {
+        "score": 5,
+        "reason": "The student's message did not contain a misconception, and the tutor's response did not introduce any errors."
+      },
+      "depth": {
+        "score": 5,
+        "reason": "The response provides a clear, concise, and conceptually sound explanation of derivatives at an appropriate undergraduate level without being overly simplistic or excessively detailed."
+      },
+      "connections": {
+        "score": 5,
+        "reason": "The tutor effectively connects the abstract concept of derivatives to relatable real-world analogies and the familiar concept of slope, enhancing understanding."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No sources were available for this scenario, and the tutor's response contains standard mathematical facts that do not require external grounding."
+      }
+    }
+  },
+  "context_redox": {
+    "response": "Absolutely! A common and clear example of a redox reaction is when zinc metal reacts with copper(II) sulfate solution.\n\nIn this reaction, solid zinc metal (Zn) is placed into a solution containing copper(II) ions (Cu\u00b2\u207a). The zinc metal will dissolve and turn into zinc ions (Zn\u00b2\u207a), while the copper(II) ions will gain electrons and form solid copper metal (Cu).\n\nHere's the overall reaction:\nZn(s) + Cu\u00b2\u207a(aq) \u2192 Zn\u00b2\u207a(aq) + Cu(s)\n\nLet's break down what's happening:\n\n1.  **Oxidation**: This is the process where a species **loses electrons**. In our example, the zinc metal (Zn) loses two electrons to become a zinc ion (Zn\u00b2\u207a).\n    *   **Example**: Zn(s) \u2192 Zn\u00b2\u207a(aq) + 2e\u207b\n    *   We say that zinc is **oxidized**.\n\n2.  **Reduction**: This is the process where a species **gains electrons**. In our example, the copper(II) ion (Cu\u00b2\u207a) gains two electrons to become solid copper metal (Cu).\n    *   **Example**: Cu\u00b2\u207a(aq) + 2e\u207b \u2192 Cu(s)\n    *   We say that copper(II) is **reduced**.\n\nSince one substance is losing electrons (zinc) and another is gaining them (copper(II)), this is a **redox reaction** \u2013 a chemical reaction involving the transfer of electrons between two species.\n\nDo you want me to go deeper into how we identify oxidation and reduction, or would you like to see another example?",
+    "scores": {
+      "scaffolding": {
+        "score": 4,
+        "reason": "The tutor effectively broke down the overall reaction into oxidation and reduction half-reactions, explaining the electron transfer in each step."
+      },
+      "engagement": {
+        "score": 5,
+        "reason": "The tutor concluded with an open-ended question, inviting the student to guide the next steps of the learning process."
+      },
+      "misconception": {
+        "score": 5,
+        "reason": "The student's message contained no misconception, and the tutor's response was accurate and clear."
+      },
+      "depth": {
+        "score": 4,
+        "reason": "The response provided a clear example and appropriate definitions of oxidation and reduction, suitable for an undergraduate level without being overly simplistic or complex."
+      },
+      "connections": {
+        "score": 4,
+        "reason": "The tutor anchored the explanation in the fundamental concept of electron transfer, which is central to understanding redox reactions."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No sources were available for this scenario, and the tutor's explanation relied on fundamental chemical principles that do not require specific grounding."
+      }
+    }
+  },
+  "context_pointers_malloc": {
+    "response": "That's a great topic to dive into, especially with your background in C!\n\nIn programming, we often need memory to store data. Sometimes we know exactly how much memory we'll need when we write the program, but other times, we don't. That's where dynamic memory allocation comes in.\n\n**Dynamic Memory Allocation** is the process of requesting memory from the operating system *while your program is running*, instead of at the beginning when the program is compiled. This allows your program to adapt to changing data requirements.\n\nImagine you're writing a program that needs to store a list of student names. If you declare a fixed-size array like `char studentNames[10][50];`, you can only store 10 names. What if you suddenly need to store 100 names, or only 3? With dynamic memory allocation, your program can ask for exactly the right amount of memory when it knows how many names it needs, and even adjust it later.\n\nIn C, you typically use functions like `malloc` (memory allocate) to request this memory. For example:\n\n```c\n#include <stdio.h>\n#include <stdlib.h> // Required for malloc and free\n\nint main() {\n    int numStudents;\n    printf(\"How many students do you want to store? \");\n    scanf(\"%d\", &numStudents);\n\n    // Request memory for 'numStudents' integers\n    // malloc returns a void pointer, so we cast it to int*\n    // sizeof(int) gives us the size of one integer in bytes\n    int *studentIDs = (int *) malloc(numStudents * sizeof(int));\n\n    if (studentIDs == NULL) { // Always check if malloc succeeded\n        printf(\"Memory allocation failed!\\n\");\n        return 1;\n    }\n\n    // Now you can use studentIDs as an array of 'numStudents' integers\n    for (int i = 0; i < numStudents; i++) {\n        studentIDs[i] = i + 100; // Assign some sample IDs\n        printf(\"Student ID %d: %d\\n\", i, studentIDs[i]);\n    }\n\n    // When you're done with the dynamically allocated memory, you must release it\n    free(studentIDs);\n    studentIDs = NULL; // Good practice to set the pointer to NULL after freeing\n\n    return 0;\n}\n```\n\nWhen you use `malloc`, the memory is allocated from a special region of memory called the **heap**. The **heap** is a large pool of memory that your program can draw from during runtime. Unlike memory allocated on the stack (for local variables), heap memory persists until you explicitly release it or until your program ends.\n\nIt's crucial to understand that when you allocate memory dynamically, you also become responsible for *releasing* it when you're done using it to prevent memory leaks. This is done using the `free()` function, as shown in the example above.\n\nsave_key_idea(\"Dynamic Memory Allocation\", \"The process of requesting memory during a program's execution, rather than at compile time. This allows programs to adapt to varying data needs.\")\nsave_key_idea(\"Heap Memory\", \"A region of memory that programs can draw from during runtime for dynamic memory allocation. Memory allocated on the heap persists until explicitly freed.\")\n\nDo you want me to go deeper into how `malloc` and `free` work, or perhaps discuss the benefits and drawbacks of dynamic memory allocation?",
+    "scores": {
+      "scaffolding": {
+        "score": 4,
+        "reason": "The tutor breaks down the concept logically, moving from the 'why' to definition, analogy, code example, and related concepts, but doesn't explicitly anchor on pointers first or check in with the student at each step as suggested by ideal behaviors."
+      },
+      "engagement": {
+        "score": 2,
+        "reason": "The response is largely expository, with the only invitation for student interaction occurring at the very end, rather than throughout the explanation."
+      },
+      "misconception": {
+        "score": 5,
+        "reason": "No misconception was present in the student's message, and the tutor did not introduce any new errors."
+      },
+      "depth": {
+        "score": 5,
+        "reason": "The explanation is comprehensive, includes a practical code example, and introduces related concepts like heap vs. stack, all at an appropriate undergraduate level."
+      },
+      "connections": {
+        "score": 5,
+        "reason": "The tutor effectively uses an analogy (student names) and contrasts with fixed-size arrays, leveraging the student's existing knowledge and C background."
+      },
+      "grounding": {
+        "score": 5,
+        "reason": "No sources were provided for this scenario, and the factual claims are foundational computer science concepts that do not require external grounding."
+      }
+    }
+  }
+}

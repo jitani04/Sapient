@@ -23,7 +23,8 @@ from app.services.conversation_service import get_conversation_for_user
 from app.services.errors import ConversationNotFoundError
 from app.services.feedback_service import retrieve_preference_memories
 from app.services.knowledge_tracing_service import mastery_to_learning_status
-from app.services.llm_service import LLMService
+from app.services.llm_service import create_llm_service
+from app.services.resource_service import create_youtube_resource_provider
 from app.services.web_image_service import WebImageService
 from app.services.web_search_service import create_web_search_service
 
@@ -40,9 +41,16 @@ TEACHING_PACING_PROMPT = (
     "Teaching pacing rule: introduce or define at most 2 new concepts, terms, or principles at a time. "
     "If the student asks for a broad list, teach the 2 most important ideas first, then offer to continue "
     "with the next 2. You may connect to already-known concepts, but do not dump 4+ new definitions in one turn."
+    "\n\nCode and math explanation rule: when providing code, formulas, derivations, or worked math, explain it "
+    "line by line or step by step. Keep each step concise, name what changed, and check understanding before "
+    "adding a larger extension."
     "\n\nWeb search rule: when a web_search tool is available, use it for current/latest information, outside references, "
     "or when the student asks you to search the web. Cite web-sourced claims with the [Web N] labels returned by the tool. "
     "If the tool is not available, say you can use study materials and general model knowledge, but cannot browse live web sources."
+    "\n\nResource recommendation rule: when the student asks for resources, recommendations, links, a video, an article, "
+    "a tutorial, a textbook, a course, or 'where can I learn more' — call the find_resource tool, do not describe "
+    "categories of resources in prose. Pick the most fitting topic and kind (video or article) and call it. If the "
+    "answer benefits from both a video and an article, call find_resource twice (once for each)."
 )
 
 
@@ -296,13 +304,10 @@ async def stream_chat_endpoint(
         )
         preference_memories = []
 
-    llm_service = LLMService(
-        api_key=settings.llm_api_key,
-        model=settings.llm_model,
-        timeout_seconds=settings.llm_timeout_seconds,
-    )
+    llm_service = create_llm_service(model=conversation.model)
     image_service = WebImageService()
     web_search_service = create_web_search_service()
+    resource_provider = create_youtube_resource_provider()
 
     async def event_stream() -> AsyncIterator[str]:
         try:
@@ -315,6 +320,7 @@ async def stream_chat_endpoint(
                 system_prompt=system_prompt,
                 image_service=image_service,
                 web_search_service=web_search_service,
+                resource_provider=resource_provider,
                 preference_summary=user.preference_summary,
                 preference_memories=preference_memories,
             )

@@ -1,5 +1,5 @@
 import { getToken } from "./auth";
-import type { Assignment, AssignmentInput, AssignmentUpdate, AttemptResult, AuthResult, CalendarFeed, CalendarFeedSyncResponse, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, KeyIdeaArtifactData, KeyIdeaArtifactType, LearningMapStatus, Material, MindMap, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, SearchResponse, SessionSummary, SmartReminder, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
+import type { Assignment, AssignmentInput, AssignmentUpdate, AttemptResult, AuthResult, CalendarFeed, CalendarFeedSyncResponse, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, KeyIdeaArtifactData, KeyIdeaArtifactType, LearningMapStatus, Material, MindMap, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, Resource, SearchResponse, SessionSummary, SmartReminder, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
 
 function resolveDefaultApiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -138,7 +138,7 @@ export async function listConversations(): Promise<Conversation[]> {
 
 export async function createConversation(
   subject?: string,
-  options?: { isLecture?: boolean },
+  options?: { isLecture?: boolean; model?: string | null },
 ): Promise<Conversation> {
   const response = await fetch(`${API_BASE_URL}/conversations`, {
     method: "POST",
@@ -146,6 +146,7 @@ export async function createConversation(
     body: JSON.stringify({
       subject: subject ?? null,
       is_lecture: options?.isLecture ?? false,
+      model: options?.model ?? null,
     }),
   });
   return parseJson(response);
@@ -165,6 +166,47 @@ export async function updateConversationTitle(conversationId: number, title: str
     body: JSON.stringify({ title }),
   });
   return parseJson(response);
+}
+
+export async function updateConversationModel(conversationId: number, model: string): Promise<Conversation> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}`, {
+    method: "PATCH",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ model }),
+  });
+  return parseJson(response);
+}
+
+export async function listModels(): Promise<{ id: string; label: string; provider: string }[]> {
+  const response = await fetch(`${API_BASE_URL}/models`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function listSubjectResources(subject: string): Promise<Resource[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/projects/${encodeURIComponent(subject)}/resources`,
+    { headers: buildHeaders() },
+  );
+  return parseJson(response);
+}
+
+export async function listConversationResources(conversationId: number): Promise<Resource[]> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/resources`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function deleteResource(resourceId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/resources/${resourceId}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete resource: ${response.status}`);
+  }
 }
 
 export async function submitFeedback(request: FeedbackRequest): Promise<FeedbackResponse> {

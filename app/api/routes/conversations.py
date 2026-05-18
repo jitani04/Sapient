@@ -13,9 +13,10 @@ from app.services.conversation_service import (
     delete_conversation_for_user,
     get_conversation_for_user,
     list_conversations_for_user,
-    update_conversation_title_for_user,
+    update_conversation_for_user,
 )
 from app.services.errors import ConversationNotFoundError
+from app.services.llm_service import SUPPORTED_MODEL_IDS
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -39,11 +40,14 @@ async def create_conversation_endpoint(
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
+    if body.model is not None and body.model not in SUPPORTED_MODEL_IDS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported model.")
     conversation = await create_conversation(
         session=session,
         user_id=user_id,
         subject=body.subject,
         is_lecture=body.is_lecture,
+        model=body.model,
     )
     return ConversationRead.model_validate(conversation)
 
@@ -72,12 +76,15 @@ async def update_conversation_endpoint(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     body: ConversationUpdate,
 ) -> ConversationRead:
+    if body.model is not None and body.model not in SUPPORTED_MODEL_IDS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported model.")
     try:
-        conversation = await update_conversation_title_for_user(
+        conversation = await update_conversation_for_user(
             session=session,
             conversation_id=conversation_id,
             user_id=user_id,
             title=body.title,
+            model=body.model,
         )
         return ConversationRead.model_validate(conversation)
     except ConversationNotFoundError as exc:

@@ -12,11 +12,26 @@ async def create_conversation(
     user_id: int,
     subject: str | None = None,
     is_lecture: bool = False,
+    model: str | None = None,
 ) -> Conversation:
-    conversation = Conversation(user_id=user_id, subject=subject, is_lecture=is_lecture)
+    if model is None:
+        model = await _last_used_model_for_user(session=session, user_id=user_id)
+    conversation = Conversation(
+        user_id=user_id, subject=subject, is_lecture=is_lecture, model=model
+    )
     session.add(conversation)
     await session.commit()
     return await get_conversation_for_user(session=session, conversation_id=conversation.id, user_id=user_id)
+
+
+async def _last_used_model_for_user(*, session: AsyncSession, user_id: int) -> str | None:
+    result = await session.execute(
+        select(Conversation.model)
+        .where(Conversation.user_id == user_id, Conversation.model.is_not(None))
+        .order_by(Conversation.created_at.desc(), Conversation.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 async def list_conversations_for_user(*, session: AsyncSession, user_id: int) -> list[Conversation]:
@@ -53,20 +68,24 @@ async def delete_conversation_for_user(*, session: AsyncSession, conversation_id
     await session.commit()
 
 
-async def update_conversation_title_for_user(
+async def update_conversation_for_user(
     *,
     session: AsyncSession,
     conversation_id: int,
     user_id: int,
-    title: str | None,
+    title: str | None = None,
+    model: str | None = None,
 ) -> Conversation:
     conversation = await get_conversation_for_user(
         session=session,
         conversation_id=conversation_id,
         user_id=user_id,
     )
-    clean_title = (title or "").strip()
-    conversation.title = clean_title[:120] or None
-    conversation.title_manually_edited = True
+    if title is not None:
+        clean_title = title.strip()
+        conversation.title = clean_title[:120] or None
+        conversation.title_manually_edited = True
+    if model is not None:
+        conversation.model = model
     await session.commit()
     return await get_conversation_for_user(session=session, conversation_id=conversation_id, user_id=user_id)

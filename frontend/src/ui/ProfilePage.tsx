@@ -15,7 +15,7 @@ export function ProfilePage() {
   const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery({ queryKey: ["me"], queryFn: getCurrentUser });
   const [name, setName] = useState("");
-  const [useCase, setUseCase] = useState("");
+  const [selectedUseCases, setSelectedUseCases] = useState<string[]>([]);
   const [customUseCase, setCustomUseCase] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,18 +24,31 @@ export function ProfilePage() {
   useEffect(() => {
     if (!user) return;
     setName(user.name ?? "");
-    if (user.use_case && USE_CASES.includes(user.use_case)) {
-      setUseCase(user.use_case);
-      setCustomUseCase("");
-    } else if (user.use_case) {
-      setUseCase("Other");
-      setCustomUseCase(user.use_case);
-    }
+    const saved = (user.use_case ?? "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const known = saved.filter((item) => USE_CASES.includes(item));
+    const custom = saved.filter((item) => !USE_CASES.includes(item) && item !== "Other").join(", ");
+    setSelectedUseCases(custom ? [...known, "Other"] : known);
+    setCustomUseCase(custom);
   }, [user]);
+
+  function toggleUseCase(option: string) {
+    setSelectedUseCases((current) =>
+      current.includes(option)
+        ? current.filter((item) => item !== option)
+        : [...current, option],
+    );
+  }
+
+  const finalUseCase = selectedUseCases
+    .filter((item) => item !== "Other")
+    .concat(selectedUseCases.includes("Other") && customUseCase.trim() ? [customUseCase.trim()] : [])
+    .join(", ");
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const finalUseCase = useCase === "Other" ? customUseCase : useCase;
     setStatus(null);
     setError(null);
     setSaving(true);
@@ -81,9 +94,10 @@ export function ProfilePage() {
             <div className="onboarding-choice-grid">
               {[...USE_CASES, "Other"].map((option) => (
                 <button
-                  className={`onboarding-choice ${useCase === option ? "selected" : ""}`}
+                  aria-pressed={selectedUseCases.includes(option)}
+                  className={`onboarding-choice ${selectedUseCases.includes(option) ? "selected" : ""}`}
                   key={option}
-                  onClick={() => setUseCase(option)}
+                  onClick={() => toggleUseCase(option)}
                   type="button"
                 >
                   {option}
@@ -92,7 +106,7 @@ export function ProfilePage() {
             </div>
           </div>
 
-          {useCase === "Other" ? (
+          {selectedUseCases.includes("Other") ? (
             <label className="flow-field">
               <span>Tell us more</span>
               <input
@@ -108,7 +122,7 @@ export function ProfilePage() {
           {error ? <p className="error-text">{error}</p> : null}
 
           <div className="flow-actions">
-            <button className="button button-primary" disabled={saving || isLoading || !useCase} type="submit">
+            <button className="button button-primary" disabled={saving || isLoading || !finalUseCase.trim()} type="submit">
               {saving ? "Saving…" : "Save profile"}
             </button>
           </div>

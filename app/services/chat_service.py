@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.key_idea import KeyIdea
 from app.models.message import Message, MessageRole
 from app.models.quiz import Quiz
+from app.models.resource import Resource
 from app.services import retriever
 from app.services.conversation_service import get_conversation_for_user
 from app.services.llm_service import LLMService
 from app.services.prompt_builder import ChatTurn, build_responses_input
+from app.services.resource_service import YouTubeResourceProvider
 from app.services.web_image_service import WebImageError, WebImageService
 from app.services.web_search_service import LangSearchWebSearch, WebSearchResult
 
@@ -162,6 +164,53 @@ AGENT_TOOLS = [
                     },
                 },
                 "required": ["query", "caption"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_resource",
+            "description": (
+                "Recommend ONE external learning resource (YouTube tutorial or web article) to the student. "
+                "MUST call this when the student asks for resources, recommendations, links, a video, an "
+                "article, a tutorial, a textbook, or 'where can I learn more' — do not just describe categories "
+                "of resources in prose; actually call the tool so the student gets a clickable card. Also call "
+                "it when the student is clearly struggling with a concept and a different explanation from "
+                "outside would help, even if they did not explicitly ask. "
+                "Call this tool at most twice per turn, and only if the second call is meaningfully different "
+                "from the first — e.g. one video + one article, or two clearly different sub-topics. Do NOT "
+                "call it twice with near-identical queries; the deduper will skip duplicates and the student "
+                "will see nothing the second time. The card is shown inline and saved to the student's "
+                "Resources tab."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": (
+                            "Concept the resource should cover, e.g. 'integration by parts derivation' "
+                            "or 'CRISPR Cas9 mechanism'. Used as the search query."
+                        ),
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["video", "article"],
+                        "description": (
+                            "'video' fetches a YouTube tutorial — best for visual or procedural topics. "
+                            "'article' fetches a web article — best for definitions, deep dives, or "
+                            "when the student wants to read."
+                        ),
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": (
+                            "Short student-facing caption explaining WHY this resource will help them right now."
+                        ),
+                    },
+                },
+                "required": ["topic", "kind", "reason"],
             },
         },
     },
@@ -329,6 +378,13 @@ def _render_web_search_answer(query: str, results: list[WebSearchResult]) -> str
     return "\n\n".join(lines)
 
 
+def _strip_tool_markup(text: str) -> str:
+    cleaned = re.sub(r"<tool_code>.*?</tool_code>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    cleaned = re.sub(r"</?tool_code>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"<tool_code>.*", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+
 async def _save_quiz(
     *,
     session: AsyncSession,
@@ -355,6 +411,33 @@ async def _save_quiz(
     return quiz
 
 
+async def _save_resource(
+    *,
+    session: AsyncSession,
+    user_id: int,
+    subject: str | None,
+    conversation_id: int,
+    hit,
+    topic: str,
+) -> Resource:
+    resource = Resource(
+        user_id=user_id,
+        subject=subject or "",
+        conversation_id=conversation_id,
+        kind=hit.kind,
+        source=hit.source,
+        title=hit.title,
+        url=hit.url,
+        snippet=hit.snippet,
+        thumbnail_url=hit.thumbnail_url,
+        topic=topic[:512] if topic else None,
+    )
+    session.add(resource)
+    await session.commit()
+    await session.refresh(resource)
+    return resource
+
+
 async def stream_chat(
     *,
     session: AsyncSession,
@@ -365,6 +448,7 @@ async def stream_chat(
     system_prompt: str,
     image_service: WebImageService | None = None,
     web_search_service: LangSearchWebSearch | None = None,
+    resource_provider: YouTubeResourceProvider | None = None,
     preference_summary: str | None = None,
     preference_memories: list[str] | None = None,
 ) -> AsyncIterator[SseEvent]:
@@ -437,6 +521,8 @@ async def stream_chat(
     ai_message_chunk = None
     tool_calls_data: list[dict[str, Any]] = []
     quiz_ids_this_turn: list[int] = []
+    resource_ids_this_turn: list[int] = []
+    resource_urls_this_turn: set[str] = set()
     explicit_web_query = _extract_explicit_web_search_query(user_message)
     web_search_fallback_query: str | None = None
     web_search_fallback_results: list[WebSearchResult] = []
@@ -470,21 +556,23 @@ async def stream_chat(
             web_input_messages[0]["content"] = (
                 f"{web_input_messages[0]['content']}\n\n"
                 f"{_format_web_search_results(web_results)}\n\n"
-                "Answer the student's web-search request directly and cite web results inline as [Web 1], [Web 2], etc."
+                "The web search has already been performed by the application. "
+                "Answer the student's web-search request directly using the results above. "
+                "Do not say you are searching, do not write code, and never output <tool_code> or tool-call markup. "
+                "Cite web results inline as [Web 1], [Web 2], etc."
             )
             async for event in llm_service.stream_response(input_messages=web_input_messages):
                 if event.type == "token" and event.delta:
                     assistant_parts.append(event.delta)
-                    yield SseEvent(event="token", data={"delta": event.delta})
                 elif event.type == "completed":
                     usage = event.usage
 
-            if not "".join(assistant_parts).strip():
+            assistant_content = _strip_tool_markup("".join(assistant_parts))
+            if not assistant_content:
                 fallback = _render_web_search_answer(explicit_web_query, web_results)
-                assistant_parts.append(fallback)
-                yield SseEvent(event="token", data={"delta": fallback})
+                assistant_content = _strip_tool_markup(fallback)
 
-            assistant_content = "".join(assistant_parts).strip()
+            yield SseEvent(event="token", data={"delta": assistant_content})
             assistant_msg = Message(
                 conversation_id=conversation_id,
                 role=MessageRole.ASSISTANT,
@@ -648,6 +736,89 @@ async def stream_chat(
                         )
                     )
 
+                elif tc["name"] == "find_resource":
+                    args = tc["args"]
+                    topic = str(args.get("topic", "")).strip()
+                    kind = str(args.get("kind", "")).strip().lower()
+                    reason = str(args.get("reason", "")).strip()
+                    resource_hit = None
+                    if kind not in {"video", "article"}:
+                        tool_content = (
+                            f"find_resource called with invalid kind={kind!r}; nothing displayed."
+                        )
+                    elif not topic:
+                        tool_content = "find_resource called without a topic; nothing displayed."
+                    else:
+                        try:
+                            if kind == "video" and resource_provider is not None:
+                                hits = await resource_provider.search(query=topic, max_results=1)
+                                resource_hit = hits[0] if hits else None
+                            elif kind == "article" and web_search_service is not None:
+                                results = await web_search_service.search(query=topic, count=1)
+                                if results:
+                                    r = results[0]
+                                    from app.services.resource_service import ResourceHit as _RH
+                                    resource_hit = _RH(
+                                        kind="article",
+                                        source="web",
+                                        title=r.title,
+                                        url=r.url,
+                                        snippet=r.summary or r.snippet or None,
+                                        thumbnail_url=None,
+                                    )
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning(
+                                "Resource lookup failed",
+                                extra={
+                                    "conversation_id": conversation_id,
+                                    "user_id": user_id,
+                                    "kind": kind,
+                                    "topic": topic,
+                                    "error": str(exc),
+                                },
+                            )
+
+                        if resource_hit is not None and resource_hit.url in resource_urls_this_turn:
+                            tool_content = (
+                                f"Resource for '{topic}' was already recommended this turn — skipping "
+                                "the duplicate. Choose a different topic or kind if you want another one."
+                            )
+                        elif resource_hit is not None:
+                            saved = await _save_resource(
+                                session=session,
+                                user_id=user_id,
+                                subject=subject,
+                                conversation_id=conversation_id,
+                                hit=resource_hit,
+                                topic=topic,
+                            )
+                            resource_ids_this_turn.append(saved.id)
+                            resource_urls_this_turn.add(saved.url)
+                            yield SseEvent(event="resource", data={
+                                "id": saved.id,
+                                "kind": saved.kind,
+                                "source": saved.source,
+                                "title": saved.title,
+                                "url": saved.url,
+                                "snippet": saved.snippet,
+                                "thumbnail_url": saved.thumbnail_url,
+                                "topic": saved.topic,
+                                "reason": reason or None,
+                            })
+                            tool_content = (
+                                f"{kind.capitalize()} resource for '{topic}' shown to the student and "
+                                "saved to their Resources tab."
+                            )
+                        else:
+                            tool_content = (
+                                f"No {kind} resource could be found for '{topic}'. "
+                                "Continue the explanation without an external recommendation."
+                            )
+
+                    lc_tool_messages.append(
+                        LCToolMessage(content=tool_content, tool_call_id=tc["id"])
+                    )
+
                 elif tc["name"] == "save_key_idea":
                     args = tc["args"]
                     idea = await _save_key_idea(
@@ -741,6 +912,14 @@ async def stream_chat(
             await session.execute(
                 sa_update(Quiz)
                 .where(Quiz.id.in_(quiz_ids_this_turn))
+                .values(message_id=assistant_msg.id)
+            )
+            await session.commit()
+
+        if resource_ids_this_turn:
+            await session.execute(
+                sa_update(Resource)
+                .where(Resource.id.in_(resource_ids_this_turn))
                 .values(message_id=assistant_msg.id)
             )
             await session.commit()

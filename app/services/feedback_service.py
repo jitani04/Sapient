@@ -295,13 +295,9 @@ async def create_or_update_feedback(
 
     if classifier is not None and (feedback_text or correction):
         if llm_service is None:
-            from app.services.llm_service import LLMService
+            from app.services.llm_service import create_llm_service
 
-            llm_service = LLMService(
-                api_key=settings.llm_api_key,
-                model=settings.llm_model,
-                timeout_seconds=settings.llm_timeout_seconds,
-            )
+            llm_service = create_llm_service()
         classification = await classifier(
             llm_service=llm_service,
             feedback_entry=FeedbackClassificationInput(
@@ -369,13 +365,9 @@ async def enrich_feedback_in_background(
         )
 
         if llm_service is None:
-            from app.services.llm_service import LLMService
+            from app.services.llm_service import create_llm_service
 
-            llm_service = LLMService(
-                api_key=settings.llm_api_key,
-                model=settings.llm_model,
-                timeout_seconds=settings.llm_timeout_seconds,
-            )
+            llm_service = create_llm_service()
 
         try:
             classification = await classifier(
@@ -511,12 +503,8 @@ async def update_user_preference_summary(
         return None
 
     if llm_service is None:
-        from app.services.llm_service import LLMService
-        llm_service = LLMService(
-            api_key=settings.llm_api_key,
-            model=settings.llm_model,
-            timeout_seconds=settings.llm_timeout_seconds,
-        )
+        from app.services.llm_service import create_llm_service
+        llm_service = create_llm_service()
     prompt = _build_preference_summary_prompt(feedback_entries)
     response = await llm_service._llm.ainvoke(llm_service.to_langchain_messages([{"role": "user", "content": prompt}]))  # noqa: SLF001
     summary = response.content.strip() if isinstance(response.content, str) else ""

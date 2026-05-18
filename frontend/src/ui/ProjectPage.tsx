@@ -4,15 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Circle, Download, ExternalLink, LockKeyhole, MessageCircle, MoreHorizontal, Pencil, Play, Plus, Trash2 } from "lucide-react";
 
-import { RateLimitError, createConversation, createKeyIdea, createManualQuiz, deleteConversation, deleteKeyIdea, deleteProjectSubject, generateMindMap, generateSubjectFlashcards, generateSubjectQuiz, generateSummary, generateWeakQuiz, getCurrentUser, getDueFlashcards, getProjectProfile, getProjectProgress, listAllKeyIdeas, listAssignments, listConversations, listMaterials, updateConversationTitle, updateKeyIdea, updateLearningMapProgress, updateProjectMindMap } from "../api";
+import { RateLimitError, createConversation, createKeyIdea, createManualQuiz, deleteConversation, deleteKeyIdea, deleteProjectSubject, deleteResource, generateMindMap, generateSubjectFlashcards, generateSubjectQuiz, generateSummary, generateWeakQuiz, getCurrentUser, getDueFlashcards, getProjectProfile, getProjectProgress, listAllKeyIdeas, listAssignments, listConversations, listMaterials, listSubjectResources, updateConversationTitle, updateKeyIdea, updateLearningMapProgress, updateProjectMindMap } from "../api";
 import { formatSubjectName, normalizeSubject } from "../subjects";
 import type { Conversation, Flashcard, KeyIdea, KnowledgeStateEntry, LearningMapStatus, MindMap, MindMapNode, PracticeQuizItem, ProjectProgress, SessionSummary } from "../types";
 import { FlashcardsView } from "./FlashcardsPage";
 import { LectureModeOverlay } from "./LectureModeOverlay";
 import { MaterialsView } from "./MaterialsPage";
+import { ResourceCard } from "./ResourceCard";
 import { WeakQuizModal } from "./WeakQuizModal";
 
-type ProjectTab = "overview" | "notes" | "materials" | "flashcards";
+type ProjectTab = "overview" | "notes" | "materials" | "quizzes" | "flashcards" | "resources";
 
 interface LearningPathNode {
   id: string;
@@ -207,7 +208,7 @@ function ManualFlashcardDialog({
   );
 }
 
-const PROJECT_TABS: ProjectTab[] = ["overview", "notes", "materials", "flashcards"];
+const PROJECT_TABS: ProjectTab[] = ["overview", "notes", "materials", "quizzes", "flashcards", "resources"];
 
 function parseProjectTab(value: string | null): ProjectTab {
   if (value && (PROJECT_TABS as string[]).includes(value)) return value as ProjectTab;
@@ -218,7 +219,9 @@ const TAB_LABEL: Record<ProjectTab, string> = {
   overview: "Overview",
   notes: "Notes",
   materials: "Materials",
+  quizzes: "Quizzes",
   flashcards: "Flashcards",
+  resources: "Resources",
 };
 
 function SectionToggle({ open, onClick, label }: { open: boolean; onClick: () => void; label: string }) {
@@ -1407,7 +1410,64 @@ export function ProjectPage() {
       </div>
 
       {activeTab === "materials" && <MaterialsView subject={decoded} />}
-      {activeTab === "flashcards" && <FlashcardsView subject={decoded} />}
+      {activeTab === "quizzes" && (
+        <section className="project-section-shell project-practice-section project-tab-practice">
+          <div className="project-practice-card project-practice-card-wide">
+            <h3>Quizzes</h3>
+            <p>Generate a new quiz across {displaySubject} or write your own questions.</p>
+            <div className="project-practice-actions">
+              <button
+                className="button button-primary"
+                disabled={practiceBusy === "quiz"}
+                onClick={() => void handleGenerateSubjectQuiz()}
+                type="button"
+              >
+                {practiceBusy === "quiz" ? "Generating..." : "Generate quiz"}
+              </button>
+              <button
+                className="button button-secondary"
+                onClick={() => setManualQuizOpen(true)}
+                type="button"
+              >
+                Add question
+              </button>
+            </div>
+          </div>
+          {practiceError && <p className="project-practice-error">{practiceError}</p>}
+          {practiceStatus && <p className="project-practice-status">{practiceStatus}</p>}
+        </section>
+      )}
+      {activeTab === "flashcards" && (
+        <>
+          <section className="project-section-shell project-practice-section project-tab-practice">
+            <div className="project-practice-card project-practice-card-wide">
+              <h3>Flashcards</h3>
+              <p>Auto-build flashcards on this subject or save one yourself.</p>
+              <div className="project-practice-actions">
+                <button
+                  className="button button-primary"
+                  disabled={practiceBusy === "flashcards"}
+                  onClick={() => void handleGenerateFlashcards()}
+                  type="button"
+                >
+                  {practiceBusy === "flashcards" ? "Generating..." : "Generate flashcards"}
+                </button>
+                <button
+                  className="button button-secondary"
+                  onClick={() => setManualFlashcardOpen(true)}
+                  type="button"
+                >
+                  Add flashcard
+                </button>
+              </div>
+            </div>
+            {practiceError && <p className="project-practice-error">{practiceError}</p>}
+            {practiceStatus && <p className="project-practice-status">{practiceStatus}</p>}
+          </section>
+          <FlashcardsView subject={decoded} />
+        </>
+      )}
+      {activeTab === "resources" && <ResourcesView subject={decoded} />}
 
       {activeTab === "notes" && (
         <section className="notes-notebook">
@@ -2049,71 +2109,6 @@ export function ProjectPage() {
         </section>
       )}
 
-      {/* Practice: generate or add quizzes / flashcards */}
-      <section className="project-section-shell project-practice-section">
-        <div className="project-section-header">
-          <div className="content-card-title project-section-title">Practice</div>
-        </div>
-        <div className="project-practice-grid">
-          <div className="project-practice-card">
-            <h3>Quizzes</h3>
-            <p>Generate a new quiz across {displaySubject} or write your own questions.</p>
-            <div className="project-practice-actions">
-              <button
-                className="button button-primary"
-                disabled={practiceBusy === "quiz"}
-                onClick={() => void handleGenerateSubjectQuiz()}
-                type="button"
-              >
-                {practiceBusy === "quiz" ? "Generating…" : "Generate quiz"}
-              </button>
-              <button
-                className="button button-secondary"
-                onClick={() => setManualQuizOpen(true)}
-                type="button"
-              >
-                Add question
-              </button>
-            </div>
-          </div>
-          <div className="project-practice-card">
-            <h3>Flashcards</h3>
-            <p>Auto-build flashcards on this subject or save one yourself.</p>
-            <div className="project-practice-actions">
-              <button
-                className="button button-primary"
-                disabled={practiceBusy === "flashcards"}
-                onClick={() => void handleGenerateFlashcards()}
-                type="button"
-              >
-                {practiceBusy === "flashcards" ? "Generating…" : "Generate flashcards"}
-              </button>
-              <button
-                className="button button-secondary"
-                onClick={() => setManualFlashcardOpen(true)}
-                type="button"
-              >
-                Add flashcard
-              </button>
-            </div>
-          </div>
-        </div>
-        {practiceError && <p className="project-practice-error">{practiceError}</p>}
-        {practiceStatus && <p className="project-practice-status">{practiceStatus}</p>}
-        {manualQuizOpen && (
-          <ManualQuizDialog
-            onCancel={() => setManualQuizOpen(false)}
-            onSave={(input) => void handleSaveManualQuiz(input)}
-          />
-        )}
-        {manualFlashcardOpen && (
-          <ManualFlashcardDialog
-            onCancel={() => setManualFlashcardOpen(false)}
-            onSave={(input) => void handleSaveManualFlashcard(input)}
-          />
-        )}
-      </section>
-
       {/* Study sessions list */}
       <section className="project-section-shell">
         <div className="project-section-header">
@@ -2316,9 +2311,77 @@ export function ProjectPage() {
       </section>
         </>
       )}
+      {manualQuizOpen && (
+        <ManualQuizDialog
+          onCancel={() => setManualQuizOpen(false)}
+          onSave={(input) => void handleSaveManualQuiz(input)}
+        />
+      )}
+      {manualFlashcardOpen && (
+        <ManualFlashcardDialog
+          onCancel={() => setManualFlashcardOpen(false)}
+          onSave={(input) => void handleSaveManualFlashcard(input)}
+        />
+      )}
       {weakQuizzes && (
         <WeakQuizModal quizzes={weakQuizzes} onClose={() => setWeakQuizzes(null)} />
       )}
     </div>
+  );
+}
+
+function ResourcesView({ subject }: { subject: string }) {
+  const queryClient = useQueryClient();
+  const resourcesQuery = useQuery({
+    queryKey: ["subject-resources", subject],
+    queryFn: () => listSubjectResources(subject),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deleteResource(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["subject-resources", subject] });
+    },
+  });
+
+  const resources = resourcesQuery.data ?? [];
+  const videos = resources.filter((r) => r.kind === "video");
+  const articles = resources.filter((r) => r.kind === "article");
+
+  return (
+    <section className="resources-view">
+      <div className="resources-view-header">
+        <div>
+          <h2>Resources</h2>
+          <p>Videos and articles your tutor has recommended for {subject}. Open in a new tab or remove what isn't useful.</p>
+        </div>
+      </div>
+      {resourcesQuery.isLoading && <div className="resources-empty">Loading…</div>}
+      {!resourcesQuery.isLoading && resources.length === 0 && (
+        <div className="resources-empty">
+          No resources yet. As you chat with your tutor about {subject}, it will save helpful videos and articles here.
+        </div>
+      )}
+      {videos.length > 0 && (
+        <>
+          <h3 className="resources-section-heading">Videos</h3>
+          <div className="resources-grid">
+            {videos.map((r) => (
+              <ResourceCard key={r.id} resource={r} onDelete={(id) => deleteMutation.mutate(id)} />
+            ))}
+          </div>
+        </>
+      )}
+      {articles.length > 0 && (
+        <>
+          <h3 className="resources-section-heading">Articles</h3>
+          <div className="resources-grid">
+            {articles.map((r) => (
+              <ResourceCard key={r.id} resource={r} onDelete={(id) => deleteMutation.mutate(id)} />
+            ))}
+          </div>
+        </>
+      )}
+    </section>
   );
 }

@@ -16,7 +16,6 @@ import {
 import { deleteConversation, listConversations } from "../api";
 import { clearToken } from "../auth";
 import { formatSubjectName } from "../subjects";
-import { ThemeToggle } from "./ThemeToggle";
 
 const SIDEBAR_WIDTH_KEY = "sapient-sidebar-width";
 const DEFAULT_SIDEBAR_WIDTH = 236;
@@ -155,7 +154,6 @@ export function Sidebar({ onCollapse }: SidebarProps = {}) {
       style={{ width: `${sidebarWidth}px` }}
     >
       <div className="sidebar-brand">
-        <div className="sidebar-logo">S</div>
         <span className="sidebar-name">Sapient</span>
         {onCollapse && (
           <button
@@ -270,8 +268,7 @@ export function Sidebar({ onCollapse }: SidebarProps = {}) {
           <span className="sidebar-item-label">Settings</span>
         </Link>
 
-        <ThemeToggle />
-        <button className="sidebar-item" onClick={handleSignOut} type="button" style={{ width: "100%" }}>
+        <button className="sidebar-item" onClick={handleSignOut} type="button">
           <span className="sidebar-item-icon"><LogOut size={16} strokeWidth={1.8} /></span>
           <span className="sidebar-item-label">Sign out</span>
         </button>

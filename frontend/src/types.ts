@@ -48,6 +48,7 @@ export interface Conversation {
   title: string | null;
   title_manually_edited: boolean;
   is_lecture: boolean;
+  model: string | null;
   created_at: string;
   messages: Message[];
   summary: SessionSummary | null;
@@ -378,7 +379,39 @@ export interface ChatImageEvent {
   data: ImageData;
 }
 
-export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatWebSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatConversationTitleEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent | ChatImageEvent;
+export interface ResourceData {
+  id: number;
+  kind: "video" | "article";
+  source: "youtube" | "web";
+  title: string;
+  url: string;
+  snippet: string | null;
+  thumbnail_url: string | null;
+  topic: string | null;
+  reason?: string | null;
+}
+
+export interface Resource {
+  id: number;
+  subject: string;
+  conversation_id: number | null;
+  message_id: number | null;
+  kind: "video" | "article";
+  source: "youtube" | "web";
+  title: string;
+  url: string;
+  snippet: string | null;
+  thumbnail_url: string | null;
+  topic: string | null;
+  created_at: string;
+}
+
+export interface ChatResourceEvent {
+  event: "resource";
+  data: ResourceData;
+}
+
+export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatWebSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatConversationTitleEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent | ChatImageEvent | ChatResourceEvent;
 
 export type KeyIdeaArtifactType = "text" | "diagram" | "image";
 

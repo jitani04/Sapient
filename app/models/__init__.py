@@ -8,6 +8,7 @@ from app.models.message_feedback import MessageFeedback
 from app.models.preference_memory import PreferenceMemory
 from app.models.project_profile import ProjectProfile
 from app.models.quiz import Quiz, QuizAttempt
+from app.models.resource import Resource
 from app.models.user import User
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "QuizAttempt",
     "ProjectProfile",
     "KeyIdea",
+    "Resource",
 ]

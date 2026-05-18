@@ -12,8 +12,10 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.conversations import router as conversations_router
 from app.api.routes.materials import router as materials_router
+from app.api.routes.models import router as models_router
 from app.api.routes.projects import router as projects_router
 from app.api.routes.quiz import router as quiz_router
+from app.api.routes.resources import router as resources_router
 from app.api.routes.flashcards import router as flashcards_router
 from app.api.routes.feedback import router as feedback_router
 from app.api.routes.search import router as search_router
@@ -97,8 +99,10 @@ app.include_router(auth_router)
 app.include_router(conversations_router)
 app.include_router(chat_router)
 app.include_router(materials_router)
+app.include_router(models_router)
 app.include_router(projects_router)
 app.include_router(quiz_router)
+app.include_router(resources_router)
 app.include_router(artifacts_router)
 app.include_router(assignments_router)
 app.include_router(flashcards_router)

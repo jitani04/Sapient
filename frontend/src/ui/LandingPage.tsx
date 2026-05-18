@@ -19,7 +19,9 @@ export function LandingPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState("");
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const busyLabel = loadingLabel || (mode === "signup" ? "Creating account…" : "Signing in…");
 
   useEffect(() => {
     const elements = Array.from(document.querySelectorAll<HTMLElement>(".motion-reveal"));
@@ -49,9 +51,11 @@ export function LandingPage() {
   }
 
   function openModal(m: ModalMode) {
+    if (loading) return;
     setEmail("");
     setPassword("");
     setError(null);
+    setLoadingLabel("");
     setMode(m);
   }
 
@@ -65,6 +69,7 @@ export function LandingPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setLoadingLabel(mode === "signup" ? "Creating account…" : "Signing in…");
     setLoading(true);
     try {
       const result = mode === "signup" ? await register(email, password) : await login(email, password);
@@ -73,6 +78,7 @@ export function LandingPage() {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setLoading(false);
+      setLoadingLabel("");
     }
   }
 
@@ -82,6 +88,7 @@ export function LandingPage() {
       return;
     }
     setError(null);
+    setLoadingLabel(mode === "signup" ? "Creating your Google account…" : "Signing in with Google…");
     setLoading(true);
     try {
       const result = await loginWithGoogle(response.credential);
@@ -90,6 +97,7 @@ export function LandingPage() {
       setError(err instanceof Error ? err.message : "Google sign-in failed.");
     } finally {
       setLoading(false);
+      setLoadingLabel("");
     }
   }
 
@@ -107,13 +115,11 @@ export function LandingPage() {
 
       <main className="landing-main">
         <section className="landing-hero motion-reveal motion-rise">
-          <span className="landing-kicker">Sapient · stateful AI tutoring</span>
           <h1 className="landing-headline">
-            A tutor that remembers <em>what</em> you've learned.
+            A tutor built for <em>sapience</em>.
           </h1>
           <p className="landing-sub">
-            Sapient turns each study session into durable artifacts &mdash; concept maps, quizzes, flashcards,
-            and a Bayesian model of your mastery &mdash; all grounded in materials you upload.
+            Reasoning, reflection, and learning that carries forward from one study session to the next.
           </p>
           <div className="landing-cta-row">
             <button className="button button-primary" onClick={() => openModal("signup")} type="button">
@@ -231,36 +237,42 @@ export function LandingPage() {
       </main>
 
       <footer className="landing-footer">
-        Sapient · A masters project on stateful AI tutoring · {new Date().getFullYear()}
+        A masters project on stateful AI tutoring
       </footer>
 
       {mode !== null && (
-        <div className="landing-modal-backdrop" onClick={() => setMode(null)} role="presentation">
+        <div className="landing-modal-backdrop" onClick={() => !loading && setMode(null)} role="presentation">
           <div
-            className="landing-modal"
+            className={`landing-modal ${loading ? "landing-modal-busy" : ""}`}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
+            aria-busy={loading}
           >
             <div className="landing-modal-head">
               <div>
                 <span className="landing-kicker-sm">Account</span>
                 <h2>{mode === "signup" ? "Create account" : "Welcome back"}</h2>
               </div>
-              <button className="modal-close-x" onClick={() => setMode(null)} type="button">×</button>
+              <button className="modal-close-x" disabled={loading} onClick={() => setMode(null)} type="button">×</button>
             </div>
 
             <div className="modal-tabs-row">
-              <button className={`modal-tab-btn ${mode === "signin" ? "active" : ""}`} onClick={() => setMode("signin")} type="button">
+              <button className={`modal-tab-btn ${mode === "signin" ? "active" : ""}`} disabled={loading} onClick={() => setMode("signin")} type="button">
                 Sign in
               </button>
-              <button className={`modal-tab-btn ${mode === "signup" ? "active" : ""}`} onClick={() => setMode("signup")} type="button">
+              <button className={`modal-tab-btn ${mode === "signup" ? "active" : ""}`} disabled={loading} onClick={() => setMode("signup")} type="button">
                 Create account
               </button>
             </div>
 
             <div className="google-auth-box">
-              {googleClientId ? (
+              {loading ? (
+                <div className="auth-loading-card" role="status" aria-live="polite">
+                  <span className="auth-loading-spinner" />
+                  <span>{busyLabel}</span>
+                </div>
+              ) : googleClientId ? (
                 <GoogleLogin
                   onError={() => setError("Google sign-in failed.")}
                   onSuccess={(response) => void handleGoogleSuccess(response)}
@@ -284,6 +296,7 @@ export function LandingPage() {
                   autoComplete="email"
                   placeholder="you@example.com"
                   value={email}
+                  disabled={loading}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
@@ -296,6 +309,7 @@ export function LandingPage() {
                   autoComplete={mode === "signup" ? "new-password" : "current-password"}
                   placeholder="Enter your password"
                   value={password}
+                  disabled={loading}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
@@ -303,9 +317,9 @@ export function LandingPage() {
               {error ? <p className="error-text">{error}</p> : null}
 
               <div className="modal-actions">
-                <button className="button button-secondary" onClick={() => setMode(null)} type="button">Cancel</button>
+                <button className="button button-secondary" disabled={loading} onClick={() => setMode(null)} type="button">Cancel</button>
                 <button className="button button-primary" disabled={loading} type="submit">
-                  {loading ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
+                  {loading ? busyLabel : mode === "signup" ? "Create account" : "Sign in"}
                 </button>
               </div>
             </form>

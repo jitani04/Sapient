@@ -6,13 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_user_id
-from app.core.config import get_settings
 from app.db.session import get_db_session
 from app.models.conversation import Conversation
 from app.models.quiz import Quiz, QuizAttempt
 from app.schemas.quiz import AttemptCreate, AttemptResult, QuizRead
 from app.services.knowledge_tracing_service import update_knowledge_state_for_quiz
-from app.services.llm_service import LLMService
+from app.services.llm_service import create_llm_service
 from app.services.quiz_grading_service import grade_quiz_attempt
 
 router = APIRouter(tags=["quizzes"])
@@ -137,12 +136,7 @@ async def submit_attempt(
         is_correct = True
         explanation = quiz.explanation
     else:
-        settings = get_settings()
-        llm_service = LLMService(
-            api_key=settings.llm_api_key,
-            model=settings.llm_model,
-            timeout_seconds=settings.llm_timeout_seconds,
-        )
+        llm_service = create_llm_service()
         graded = await grade_quiz_attempt(
             llm_service=llm_service,
             question=quiz.question,

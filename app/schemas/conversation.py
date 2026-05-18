@@ -9,10 +9,12 @@ from app.schemas.message import MessageRead
 class ConversationCreate(BaseModel):
     subject: str | None = None
     is_lecture: bool = False
+    model: str | None = None
 
 
 class ConversationUpdate(BaseModel):
     title: str | None = None
+    model: str | None = None
 
 
 class ConversationRead(BaseModel):
@@ -24,6 +26,7 @@ class ConversationRead(BaseModel):
     title: str | None = None
     title_manually_edited: bool = False
     is_lecture: bool = False
+    model: str | None = None
     created_at: datetime
     messages: list[MessageRead] = Field(default_factory=list)
     summary: dict[str, Any] | None = None
