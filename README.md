@@ -1,6 +1,8 @@
-# Sapient — Intelligent Tutoring System
+# Sapient — Agentic Tutoring System
 
 Sapient is a full-stack AI tutoring platform built around guided study sessions, retrieval over uploaded materials, formative quizzes, saved notes, spaced repetition, and project-based progress tracking.
+
+The production domain is `sapient-ats.com`; **ATS** stands for **Agentic Tutoring System**.
 
 The application is organized by **subject**. Each subject can have its own goals, cover image, mind map, uploaded materials, study sessions, flashcards, and weak-area review flow.
 
@@ -18,7 +20,149 @@ The application is organized by **subject**. Each subject can have its own goals
 | Frontend | React 19, TypeScript, Vite |
 | Routing | React Router 7 |
 | Client data layer | TanStack React Query |
-| Diagram rendering | Excalidraw |
+| Diagram rendering | Mermaid |
+
+## System Diagrams
+
+### Figure 1. Production System Design
+
+```mermaid
+flowchart LR
+    Student["Student browser"]
+    Frontend["React + Vite SPA\nFly app: sapient\nsapient-ats.com"]
+    Backend["FastAPI + Uvicorn\nFly app: sapient-api\napi.sapient-ats.com"]
+    Postgres[("PostgreSQL + pgvector\nusers, sessions, chunks, artifacts")]
+    Storage[("S3-compatible object storage\nuploaded study materials")]
+    Gemini["Google Gemini\nchat generation"]
+    Embeddings["Google embeddings\nmaterial and query vectors"]
+    OpenAI["OpenAI speech\nSTT + TTS"]
+    Search["Web, image, and resource APIs"]
+    Email["Resend\nreview digest email"]
+    Scheduler["GitHub Actions\nscheduled review job"]
+
+    Student --> Frontend
+    Frontend -->|"REST + SSE chat stream"| Backend
+    Frontend -->|"presigned PUT/GET"| Storage
+    Scheduler -->|"POST /internal/review-digests/run"| Backend
+    Backend --> Postgres
+    Backend --> Storage
+    Backend --> Gemini
+    Backend --> Embeddings
+    Backend --> OpenAI
+    Backend --> Search
+    Backend --> Email
+```
+
+### Figure 2. Tutor Turn and Agentic Planning Flow
+
+```mermaid
+sequenceDiagram
+    actor Student
+    participant UI as React chat UI
+    participant API as FastAPI chat route
+    participant Agent as AgentOrchestrator
+    participant Retriever as Retriever
+    participant LLM as Tutor LLM
+    participant DB as PostgreSQL
+
+    Student->>UI: Ask a question or request practice
+    UI->>API: POST /chat/{conversation_id}
+    API->>Agent: Build student and subject state
+    Agent->>DB: Load weak topics, due cards, assignments, notes
+    Agent-->>UI: SSE agent_step events
+    Agent->>Retriever: Search uploaded material chunks
+    Retriever->>DB: Vector similarity over material_chunks
+    Retriever-->>Agent: Ranked citations
+    Agent->>LLM: Prompt with tutor policy, state, history, citations
+    LLM-->>API: Tokens and structured tool calls
+    API-->>UI: SSE token, sources, quiz, key_idea, diagram, resource
+    API->>DB: Persist messages, quizzes, notes, actions, traces
+    API-->>UI: end event with assistant message id
+```
+
+### Figure 3. Material Upload, Ingestion, and RAG
+
+```mermaid
+flowchart TD
+    Upload["Student selects PDF, TXT, or Markdown"]
+    Presign["POST /materials/presign"]
+    Put["Browser uploads file directly to object storage"]
+    Create["POST /materials\ncreate metadata row"]
+    Extract["MaterialService extracts text"]
+    Chunk["Split into semantic chunks"]
+    Embed["Create embeddings"]
+    Store[("material_chunks\ntext + vector + metadata")]
+    Ask["Student asks a question"]
+    QueryEmbed["Embed user query"]
+    SearchChunks["Vector search + optional rerank"]
+    Prompt["Inject top chunks into tutor prompt"]
+    Cite["Stream cited sources to UI"]
+
+    Upload --> Presign --> Put --> Create --> Extract --> Chunk --> Embed --> Store
+    Ask --> QueryEmbed --> SearchChunks --> Prompt --> Cite
+    Store --> SearchChunks
+```
+
+### Figure 4. Learning Memory Loop
+
+```mermaid
+flowchart LR
+    Session["Study session"]
+    Artifacts["Durable artifacts\nnotes, quizzes, diagrams, resources"]
+    Attempts["Quiz attempts"]
+    BKT["BKT mastery estimates"]
+    Flashcards["SM-2 flashcards"]
+    Progress["Project progress and weak areas"]
+    Planner["Next-best-action planner"]
+    Review["Review digest or practice session"]
+
+    Session --> Artifacts
+    Session --> Attempts
+    Artifacts --> Flashcards
+    Attempts --> BKT
+    BKT --> Progress
+    Flashcards --> Progress
+    Progress --> Planner
+    Planner --> Review
+    Review --> Session
+```
+
+### Figure 5. Core Data Model
+
+```mermaid
+erDiagram
+    USER ||--o{ CONVERSATION : owns
+    USER ||--o{ PROJECT_PROFILE : configures
+    USER ||--o{ MATERIAL : uploads
+    USER ||--o{ KEY_IDEA : saves
+    USER ||--o{ ASSIGNMENT : tracks
+    CONVERSATION ||--o{ MESSAGE : contains
+    CONVERSATION ||--o{ QUIZ : generates
+    CONVERSATION ||--o{ KEY_IDEA : produces
+    MATERIAL ||--o{ MATERIAL_CHUNK : embeds
+    QUIZ ||--o{ QUIZ_ATTEMPT : records
+    PROJECT_PROFILE ||--o{ KNOWLEDGE_STATE : estimates
+    USER ||--o{ PENDING_AGENT_ACTION : approves
+    USER ||--o{ REVIEW_DIGEST_LOG : receives
+```
+
+## Product Figures
+
+### Figure 6. Landing Page, Desktop
+
+![Sapient landing page on desktop](sapient-landing-desktop.png)
+
+### Figure 7. Project Workspace, Desktop
+
+![Sapient project workspace on desktop](sapient-project-desktop.png)
+
+### Figure 8. Landing Page, Mobile
+
+![Sapient landing page on mobile](sapient-landing-mobile.png)
+
+### Figure 9. Chat Workspace, Mobile
+
+![Sapient chat workspace on mobile](sapient-chat-mobile-issues.png)
 
 ## Implemented Features
 
@@ -28,10 +172,12 @@ The application is organized by **subject**. Each subject can have its own goals
 - RAG over uploaded PDF, TXT, and Markdown materials
 - Direct browser uploads to S3-compatible storage using presigned URLs
 - Secure material preview through presigned GET URLs
+- Bounded agentic tutoring workflow with visible planning steps and approval-gated actions
 - Inline quizzes generated during tutoring sessions
 - Weak-area practice quizzes generated from summaries and failed attempts
 - Saved key ideas / notes during sessions
 - SM-2 spaced-repetition flashcards built from saved key ideas
+- Smart Review Digest emails through Resend for opt-in review reminders
 - On-demand session summaries cached on conversations
 - Project-level progress tracking
 - Search across session messages, notes, and materials
@@ -94,8 +240,9 @@ tests/
 3. Materials are uploaded directly to object storage, then ingested into `material_chunks`.
 4. A study session is created under that subject.
 5. During chat, the backend retrieves relevant chunks and injects them into the tutor prompt.
-6. The tutor may stream quizzes, notes, diagrams, and citations alongside answer text.
-7. The user can later review summaries, notes, flashcards, weak areas, and search results.
+6. The agentic tutor layer checks learning state, retrieves sources, and emits visible planning events.
+7. The tutor may stream quizzes, notes, diagrams, resources, images, citations, and next-best-action recommendations alongside answer text.
+8. The user can later review summaries, notes, flashcards, weak areas, assignments, and search results.
 
 ## Setup
 
@@ -274,7 +421,14 @@ Notes:
 | `sources` | `{ "sources": [...] }` |
 | `quiz` | `{ quiz_id, question, quiz_type, options }` |
 | `key_idea` | `{ id, concept, summary }` |
-| `diagram` | `{ id, elements, title }` |
+| `web_sources` | `{ query, sources }` |
+| `diagram` | `{ id, source, title }` |
+| `image` | `{ id, image_url, thumbnail_url, caption, source_url }` |
+| `resource` | `{ id, kind, source, title, url, snippet }` |
+| `agent_step` | `{ message, tool?, plan? }` |
+| `pending_action` | `{ id, action_type, explanation, status, payload, preview }` |
+| `next_best_action` | `{ title, reason, actions }` |
+| `conversation_title` | `{ title }` |
 | `end` | `{ "assistant_message_id": number, "usage": {...} }` |
 | `error` | `{ "error": "..." }` |
 
