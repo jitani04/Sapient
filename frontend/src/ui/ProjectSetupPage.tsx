@@ -11,6 +11,7 @@ import {
   uploadProjectCoverImage,
 } from "../api";
 import type { ProjectCoverImageOption } from "../types";
+import { buttonClass } from "./buttonClass";
 
 const LEVELS = [
   { value: "beginner", label: "Complete beginner", description: "Little to no prior experience" },
@@ -132,7 +133,8 @@ export function ProjectSetupPage() {
       let mindmapError: string | null = null;
       if (!profile?.mind_map || levelChanged || goalsChanged) {
         try {
-          await generateMindMap(decoded);
+          const updatedProfile = await generateMindMap(decoded);
+          queryClient.setQueryData(["project-profile", decoded], updatedProfile);
         } catch (err) {
           if (err instanceof RateLimitError) {
             mindmapError = `AI is rate-limited (retry in ~${err.retryAfterSeconds}s).`;
@@ -265,7 +267,7 @@ export function ProjectSetupPage() {
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <button
                 type="button"
-                className="button button-secondary"
+                className={buttonClass("secondary")}
                 disabled={coverUploadMutation.isPending}
                 onClick={() => fileInputRef.current?.click()}
               >
@@ -278,7 +280,7 @@ export function ProjectSetupPage() {
               {coverImageUrl.trim() && (
                 <button
                   type="button"
-                  className="button button-secondary"
+                  className={buttonClass("secondary")}
                   onClick={handleClearCoverImage}
                   disabled={coverUploadMutation.isPending}
                 >
@@ -299,7 +301,7 @@ export function ProjectSetupPage() {
                   onChange={(e) => setCoverSearchQuery(e.target.value)}
                 />
                 <button
-                  className="button button-secondary"
+                  className={buttonClass("secondary")}
                   disabled={coverSearchMutation.isPending || !(coverSearchQuery.trim() || decoded)}
                   onClick={() => coverSearchMutation.mutate()}
                   type="button"
@@ -331,7 +333,7 @@ export function ProjectSetupPage() {
                           </span>
                           <button
                             type="button"
-                            className="button button-secondary setup-cover-result-select"
+                            className={buttonClass("secondary", "setup-cover-result-select")}
                             onClick={() => handleSelectCoverImage(option)}
                           >
                             {isSelected ? "Selected" : "Use image"}
@@ -349,11 +351,11 @@ export function ProjectSetupPage() {
         {error && <p className="error-text">{error}</p>}
 
         <div className="flow-actions">
-          <button className="button button-secondary" onClick={handleSkip} type="button">
+          <button className={buttonClass("secondary")} onClick={handleSkip} type="button">
             Skip for now
           </button>
           <button
-            className="button button-primary"
+            className={buttonClass("primary")}
             disabled={setupMutation.isPending || (!level && !goals.trim() && !coverImageUrl.trim())}
             onClick={() => setupMutation.mutate()}
             type="button"

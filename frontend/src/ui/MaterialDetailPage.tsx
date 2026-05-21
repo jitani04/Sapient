@@ -4,6 +4,7 @@ import { FileQuestion } from "lucide-react";
 
 import { deleteMaterial, getMaterialExtractedText, getMaterialPreviewUrl, listMaterials } from "../api";
 import { MarkdownText } from "./MarkdownText";
+import { buttonClass } from "./buttonClass";
 
 function isMarkdownMime(mime: string): boolean {
   const lower = mime.toLowerCase();
@@ -98,7 +99,7 @@ export function MaterialDetailPage() {
           <div className="empty-state-icon"><FileQuestion size={26} strokeWidth={1.6} /></div>
           <h3>Material not found</h3>
           <p>This material link is not valid.</p>
-          <Link className="button button-primary" to={projectMaterialsPath}>Back to materials</Link>
+          <Link className={buttonClass("primary")} to={projectMaterialsPath}>Back to materials</Link>
         </div>
       </div>
     );
@@ -119,7 +120,7 @@ export function MaterialDetailPage() {
           <div className="empty-state-icon"><FileQuestion size={26} strokeWidth={1.6} /></div>
           <h3>Material not found</h3>
           <p>It may have been deleted, or you may not have access to it.</p>
-          <Link className="button button-primary" to={projectMaterialsPath}>Back to materials</Link>
+          <Link className={buttonClass("primary")} to={projectMaterialsPath}>Back to materials</Link>
         </div>
       </div>
     );
@@ -136,7 +137,7 @@ export function MaterialDetailPage() {
           </p>
         </div>
         <button
-          className="button button-secondary"
+          className={buttonClass("secondary")}
           disabled={deleteMutation.isPending}
           onClick={() => void deleteMutation.mutateAsync(material.id)}
           type="button"
@@ -218,11 +219,11 @@ export function MaterialDetailPage() {
                 </div>
               )}
               <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
-                <a className="button button-secondary" href={previewQuery.data.url} target="_blank" rel="noreferrer">
+                <a className={buttonClass("secondary")} href={previewQuery.data.url} target="_blank" rel="noreferrer">
                   Open in new tab
                 </a>
                 <a
-                  className="button button-secondary"
+                  className={buttonClass("secondary")}
                   href={previewQuery.data.url}
                   download={material.filename}
                 >

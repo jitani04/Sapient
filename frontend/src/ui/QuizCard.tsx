@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 
 import { skipQuizQuestion, submitQuizAttempt } from "../api";
 import type { AttemptResult, QuizData } from "../types";
+import { buttonClass } from "./buttonClass";
 
 interface Props {
   quiz: QuizData;
@@ -54,9 +55,6 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
   }
 
   const isPending = pendingAction !== null;
-  const resultClassName = result
-    ? `quiz-result ${result.is_correct ? "quiz-result-correct" : skipped ? "quiz-result-skipped" : "quiz-result-wrong"}`
-    : "quiz-result";
   const resultHeader = result?.is_correct ? "✓ Correct!" : skipped ? "Skipped" : "✗ Not quite";
 
   function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
@@ -64,37 +62,70 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
     void handleSubmit();
   }
 
+  const optionBase =
+    "cursor-pointer rounded-lg border-[1.5px] bg-[var(--panel-bg)] px-[0.875rem] py-[0.55rem] text-left text-[0.875rem] text-[var(--text)] transition-colors";
+
+  function optionClasses(opt: string): string {
+    if (submitted && result) {
+      if (opt === result.correct_answer)
+        return `${optionBase} border-[var(--success)] bg-[var(--success-bg)] text-[var(--success)]`;
+      if (opt === selected && !result.is_correct)
+        return `${optionBase} border-[var(--error)] bg-[var(--error-bg)] text-[var(--error)]`;
+      return `${optionBase} border-[var(--panel-border)]`;
+    }
+    if (opt === selected) {
+      return `${optionBase} border-[var(--accent)] bg-[rgba(115,147,179,0.07)]`;
+    }
+    return `${optionBase} border-[var(--panel-border)] hover:not-disabled:border-[var(--accent)] hover:not-disabled:bg-[rgba(115,147,179,0.04)]`;
+  }
+
+  const resultClasses = (() => {
+    const base =
+      "relative mt-[0.85rem] overflow-hidden rounded-[10px] border border-l-4 px-4 pt-[0.95rem] pb-[0.9rem] text-[0.875rem] leading-[1.55]";
+    if (!result) return base;
+    if (result.is_correct)
+      return `${base} border-[rgba(74,222,128,0.22)] border-l-[var(--success)] bg-[rgba(74,222,128,0.07)]`;
+    if (skipped)
+      return `${base} border-[rgba(115,147,179,0.22)] border-l-[var(--accent)] bg-[rgba(115,147,179,0.07)]`;
+    return `${base} border-[rgba(248,113,113,0.20)] border-l-[var(--error)] bg-[rgba(248,113,113,0.06)]`;
+  })();
+
+  const resultHeaderColor = result?.is_correct
+    ? "text-[var(--success)]"
+    : skipped
+    ? "text-[var(--accent)]"
+    : "text-[var(--error)]";
+
   return (
     <form className="quiz-card" onSubmit={handleFormSubmit}>
-      <div className="quiz-header">
-        <span className="quiz-badge">Knowledge Check</span>
-        {quiz.concept && <span className="quiz-concept-badge">{quiz.concept}</span>}
+      <div className="mb-1 flex flex-wrap items-center gap-[0.4rem]">
+        <span className="rounded-[20px] bg-[rgba(115,147,179,0.08)] px-[0.55rem] py-[0.2rem] text-[0.68rem] font-bold tracking-[0.08em] text-[var(--accent)]">
+          Knowledge Check
+        </span>
+        {quiz.concept && (
+          <span className="max-w-full overflow-hidden text-ellipsis rounded-full bg-[rgba(115,147,179,0.06)] px-[0.55rem] py-[0.2rem] text-[0.68rem] font-bold text-[var(--text-muted)]">
+            {quiz.concept}
+          </span>
+        )}
       </div>
 
-      <p className="quiz-question">{quiz.question}</p>
+      <p className="my-[0.875rem] mb-4 text-[0.925rem] font-medium leading-[1.55] text-[var(--text)]">
+        {quiz.question}
+      </p>
 
       {quiz.quiz_type === "multiple_choice" && quiz.options ? (
-        <div className="quiz-options">
-          {quiz.options.map((opt) => {
-            let cls = "quiz-option";
-            if (submitted && result) {
-              if (opt === result.correct_answer) cls += " quiz-option-correct";
-              else if (opt === selected && !result.is_correct) cls += " quiz-option-wrong";
-            } else if (opt === selected) {
-              cls += " quiz-option-selected";
-            }
-            return (
-              <button
-                key={opt}
-                className={cls}
-                disabled={submitted || isPending}
-                onClick={() => setSelected(opt)}
-                type="button"
-              >
-                {opt}
-              </button>
-            );
-          })}
+        <div className="mb-4 flex flex-col gap-[0.45rem]">
+          {quiz.options.map((opt) => (
+            <button
+              key={opt}
+              className={optionClasses(opt)}
+              disabled={submitted || isPending}
+              onClick={() => setSelected(opt)}
+              type="button"
+            >
+              {opt}
+            </button>
+          ))}
         </div>
       ) : (
         <textarea
@@ -113,12 +144,12 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
         />
       )}
 
-      {error && <p className="error-text">{error}</p>}
+      {error && <p className="text-[0.84rem] font-medium text-[var(--error)]">{error}</p>}
 
       {!submitted && (
-        <div className="quiz-actions">
+        <div className="flex flex-col gap-[0.55rem]">
           <button
-            className="button button-primary quiz-submit"
+            className={buttonClass("primary", "w-full")}
             disabled={!selected.trim() || isPending}
             type="submit"
           >
@@ -126,7 +157,7 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
           </button>
           {!hideSkip && (
             <button
-              className="button button-secondary quiz-skip"
+              className={buttonClass("secondary", "w-full justify-center")}
               disabled={isPending}
               onClick={() => void handleSkip()}
               type="button"
@@ -138,18 +169,18 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
       )}
 
       {result && (
-        <div className={resultClassName}>
-          <div className="quiz-result-header">
+        <div className={resultClasses}>
+          <div className={`mb-[0.45rem] flex items-center gap-[0.4rem] text-[1rem] font-bold tracking-[-0.005em] ${resultHeaderColor}`}>
             {resultHeader}
           </div>
           {!result.is_correct && (
-            <div className="quiz-result-answer">
+            <div className="mb-[0.45rem] text-[var(--text-soft)] [&_strong]:text-[var(--text-main)]">
               Correct answer: <strong>{result.correct_answer}</strong>
             </div>
           )}
-          <div className="quiz-result-explanation">{result.explanation}</div>
+          <div className="text-[var(--text-soft)]">{result.explanation}</div>
           {typeof result.mastery === "number" && result.concept && (
-            <div className="quiz-mastery">
+            <div className="mt-[0.6rem] border-t border-t-[var(--panel-border)] pt-[0.55rem] text-[0.76rem] font-[650] text-[var(--text-muted)]">
               BKT mastery for {result.concept}: {Math.round(result.mastery * 100)}%
             </div>
           )}

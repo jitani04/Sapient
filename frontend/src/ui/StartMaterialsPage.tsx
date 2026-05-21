@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import { uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
+import { buttonClass } from "./buttonClass";
 
 const MATERIAL_ACCEPT = ".pdf,.pptx,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/x-markdown";
 
@@ -78,10 +79,10 @@ export function StartMaterialsPage() {
         {error ? <p className="error-text">{error}</p> : null}
 
         <div className="flow-actions">
-          <Link className="button button-secondary" to="/start/topic">
+          <Link className={buttonClass("secondary")} to="/start/topic">
             Back
           </Link>
-          <button className="button button-primary" disabled={isSubmitting} onClick={() => void handleContinue()} type="button">
+          <button className={buttonClass("primary")} disabled={isSubmitting} onClick={() => void handleContinue()} type="button">
             {isSubmitting ? "Uploading…" : "Continue"}
           </button>
         </div>

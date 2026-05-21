@@ -5,6 +5,7 @@ import { Download, X } from "lucide-react";
 import type { LectureNote } from "../types";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
+import { buttonClass } from "./buttonClass";
 
 interface Props {
   note: LectureNote;
@@ -49,7 +50,7 @@ export function LectureNoteViewer({ note, onClose }: Props) {
           </div>
           <div className="lecture-viewer-actions">
             <button
-              className="button button-secondary lecture-viewer-download"
+              className={buttonClass("secondary", "lecture-viewer-download")}
               onClick={handleDownloadPdf}
               type="button"
             >

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
 import { completeOnboarding, getCurrentUser } from "../api";
+import { buttonClass } from "./buttonClass";
 
 const USE_CASES = [
   "Studying for a class",
@@ -120,7 +121,7 @@ export function OnboardingPage() {
           {error ? <p className="error-text">{error}</p> : null}
 
           <div className="flow-actions">
-            <button className="button button-primary" disabled={loading || !finalUseCase.trim()} type="submit">
+            <button className={buttonClass("primary")} disabled={loading || !finalUseCase.trim()} type="submit">
               {loading ? "Saving…" : "Continue"}
             </button>
           </div>

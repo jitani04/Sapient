@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { completeOnboarding, getCurrentUser } from "../api";
+import { buttonClass } from "./buttonClass";
 
 const USE_CASES = [
   "Studying for a class",
@@ -122,7 +123,7 @@ export function ProfilePage() {
           {error ? <p className="error-text">{error}</p> : null}
 
           <div className="flow-actions">
-            <button className="button button-primary" disabled={saving || isLoading || !finalUseCase.trim()} type="submit">
+            <button className={buttonClass("primary")} disabled={saving || isLoading || !finalUseCase.trim()} type="submit">
               {saving ? "Saving…" : "Save profile"}
             </button>
           </div>

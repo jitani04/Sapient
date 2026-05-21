@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { listProjectProfiles } from "../api";
 import { formatSubjectName } from "../subjects";
 import { getPendingStudyContext, setPendingStudyContext } from "../studyState";
+import { buttonClass } from "./buttonClass";
 
 export function StartTopicPage() {
   const navigate = useNavigate();
@@ -84,8 +85,8 @@ export function StartTopicPage() {
           </label>
 
           <div className="flow-actions">
-            <Link className="button button-secondary" to="/dashboard">Back</Link>
-            <button className="button button-primary" disabled={!subject.trim()} type="submit">
+            <Link className={buttonClass("secondary")} to="/dashboard">Back</Link>
+            <button className={buttonClass("primary")} disabled={!subject.trim()} type="submit">
               Continue
             </button>
           </div>

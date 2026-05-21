@@ -220,6 +220,16 @@ export async function submitFeedback(request: FeedbackRequest): Promise<Feedback
   return parseJson(response);
 }
 
+export async function deleteFeedbackForMessage(messageId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/feedback/messages/${messageId}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    await parseJson(response);
+  }
+}
+
 export async function deleteConversation(conversationId: number): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}`, {
     method: "DELETE",

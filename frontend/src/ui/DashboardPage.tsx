@@ -7,6 +7,7 @@ import { conversationLastActivityTime } from "../conversations";
 import { normalizeSubject } from "../subjects";
 import type { Conversation } from "../types";
 import { useStartSessionModal } from "./StartSessionModalContext";
+import { buttonClass } from "./buttonClass";
 
 type SubjectTheme = {
   image: string;
@@ -190,7 +191,7 @@ export function DashboardPage() {
           <div className="dashboard-collection-heading">
             <span className="dashboard-collection-title">Your subjects</span>
           </div>
-          <button className="button button-primary dashboard-collection-action" onClick={() => openStartSession()} type="button">
+          <button className={buttonClass("primary", "dashboard-collection-action")} onClick={() => openStartSession()} type="button">
             <Plus size={15} strokeWidth={2.2} />
             New subject
           </button>
@@ -209,7 +210,7 @@ export function DashboardPage() {
               <span>Human Computer Interaction</span>
               <span>Interview prep</span>
             </div>
-            <button className="button button-primary" onClick={() => openStartSession()} type="button">Create a subject</button>
+            <button className={buttonClass("primary")} onClick={() => openStartSession()} type="button">Create a subject</button>
           </div>
         ) : (
           <div className="dashboard-showcase-grid">

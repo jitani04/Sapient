@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
 import { listProjectProfiles, setupProject } from "../api";
+import { buttonClass } from "./buttonClass";
 
 interface Props {
   onClose: () => void;
@@ -96,10 +97,10 @@ export function NewSubjectModal({ onClose }: Props) {
           </label>
           {error && <div className="flow-error">{error}</div>}
           <div className="flow-actions">
-            <button className="button button-secondary" disabled={busy} onClick={onClose} type="button">
+            <button className={buttonClass("secondary")} disabled={busy} onClick={onClose} type="button">
               Cancel
             </button>
-            <button className="button button-primary" disabled={!subject.trim() || busy} type="submit">
+            <button className={buttonClass("primary")} disabled={!subject.trim() || busy} type="submit">
               {busy ? "Creating…" : "Create subject"}
             </button>
           </div>

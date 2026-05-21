@@ -7,22 +7,33 @@ interface Props {
 }
 
 export function ImageArtifactCard({ image, onSave, saved }: Props) {
+  const saveButtonClasses = [
+    "inline-flex flex-shrink-0 cursor-pointer items-center gap-[0.3rem] whitespace-nowrap rounded-[5px] border px-2 py-[0.2rem] text-[0.72rem] font-semibold transition-colors",
+    saved
+      ? "border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]"
+      : "border-[var(--panel-border)] bg-transparent text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]",
+  ].join(" ");
+
   return (
-    <figure className="image-artifact-card">
+    <figure className="image-artifact-card m-0 max-w-[540px] overflow-hidden rounded-xl border border-[var(--panel-border)] bg-[var(--surface)]">
       <a
-        className="image-artifact-media"
+        className="block bg-[var(--panel-bg)]"
         href={image.source_url}
         rel="noreferrer"
         target="_blank"
       >
-        <img alt={image.caption || image.query} src={image.image_url} />
+        <img
+          alt={image.caption || image.query}
+          src={image.image_url}
+          className="block aspect-video w-full object-cover"
+        />
       </a>
-      <figcaption className="image-artifact-body">
-        <div className="image-artifact-header">
-          <div className="image-artifact-caption">{image.caption}</div>
+      <figcaption className="px-[0.875rem] pb-[0.78rem] pt-[0.72rem]">
+        <div className="flex items-start justify-between gap-2">
+          <div className="text-[0.84rem] font-bold leading-[1.4] text-[var(--text-main)]">{image.caption}</div>
           {onSave && (
             <button
-              className={`image-artifact-save${saved ? " saved" : ""}`}
+              className={saveButtonClasses}
               onClick={() => onSave(image)}
               type="button"
               title={saved ? "Saved to notes" : "Save to notes"}
@@ -34,7 +45,7 @@ export function ImageArtifactCard({ image, onSave, saved }: Props) {
             </button>
           )}
         </div>
-        <div className="image-artifact-attribution">
+        <div className="mt-[0.28rem] text-[0.72rem] leading-[1.4] text-[var(--text-muted)] [&_a:hover]:underline [&_a]:font-bold [&_a]:text-[var(--accent-dark)] [&_a]:no-underline">
           Image from{" "}
           <a href={image.source_url} rel="noreferrer" target="_blank">
             {image.source}

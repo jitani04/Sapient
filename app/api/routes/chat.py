@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_user_id
@@ -15,6 +15,7 @@ from app.core.llm_errors import is_llm_quota_error, retry_after_from_message
 from app.core.rate_limit import rate_limit_user
 from app.db.session import get_db_session
 from app.models.conversation import Conversation
+from app.models.message import Message, MessageRole
 from app.models.project_profile import ProjectProfile
 from app.models.user import User
 from app.schemas.chat import ChatRequest
@@ -35,6 +36,36 @@ router = APIRouter(
     tags=["chat"],
     dependencies=[Depends(rate_limit_user("chat", settings.rate_limit_chat_per_min))],
 )
+
+
+async def _prepare_existing_user_turn(
+    *,
+    session: AsyncSession,
+    conversation_id: int,
+    request: ChatRequest,
+) -> tuple[str, int | None]:
+    target_message_id = request.edit_message_id or request.retry_message_id
+    if target_message_id is None:
+        return request.message or "", None
+
+    message = await session.get(Message, target_message_id)
+    if message is None or message.conversation_id != conversation_id or message.role != MessageRole.USER:
+        raise HTTPException(status_code=404, detail="User message not found.")
+
+    if request.edit_message_id is not None:
+        message.content = request.message or ""
+        user_message = message.content
+    else:
+        user_message = message.content
+
+    await session.execute(
+        delete(Message).where(
+            Message.conversation_id == conversation_id,
+            Message.id > message.id,
+        )
+    )
+    await session.commit()
+    return user_message, message.id
 
 
 TEACHING_PACING_PROMPT = (
@@ -337,6 +368,12 @@ async def stream_chat_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
+    user_message, existing_user_message_id = await _prepare_existing_user_turn(
+        session=session,
+        conversation_id=conversation_id,
+        request=request,
+    )
+
     system_prompt = settings.system_prompt
     if conversation.subject:
         system_prompt = f"The student is studying: {conversation.subject}.\n\n{system_prompt}"
@@ -353,7 +390,7 @@ async def stream_chat_endpoint(
         preference_memories = await retrieve_preference_memories(
             session=session,
             user_id=user_id,
-            query=request.message,
+            query=user_message,
             task_type=conversation.subject,
             settings=settings,
         )
@@ -376,8 +413,9 @@ async def stream_chat_endpoint(
                 llm_service=llm_service,
                 conversation_id=conversation_id,
                 user_id=user_id,
-                user_message=request.message,
+                user_message=user_message,
                 system_prompt=system_prompt,
+                user_message_id=existing_user_message_id,
                 image_service=image_service,
                 web_search_service=web_search_service,
                 resource_provider=resource_provider,

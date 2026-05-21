@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { createConversation, generateMindMap, setupProject } from "../api";
 import { clearPendingStudyContext, getPendingStudyContext } from "../studyState";
+import { buttonClass } from "./buttonClass";
 
 export function StartMethodPage() {
   const navigate = useNavigate();
@@ -66,11 +67,11 @@ export function StartMethodPage() {
         {error && <p className="error-text">{error}</p>}
 
         <div className="flow-actions">
-          <Link className="button button-secondary" to="/start/materials">
+          <Link className={buttonClass("secondary")} to="/start/materials">
             Back
           </Link>
           <button
-            className="button button-primary"
+            className={buttonClass("primary")}
             disabled={createMutation.isPending}
             onClick={() => createMutation.mutate()}
             type="button"

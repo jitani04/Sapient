@@ -324,6 +324,24 @@ async def create_or_update_feedback(
     return feedback
 
 
+async def delete_feedback_for_message(
+    *,
+    session: AsyncSession,
+    user_id: int,
+    message_id: int,
+) -> None:
+    feedback = await session.scalar(
+        select(MessageFeedback).where(
+            MessageFeedback.user_id == user_id,
+            MessageFeedback.message_id == message_id,
+        )
+    )
+    if feedback is None:
+        raise ConversationNotFoundError(f"Feedback for message {message_id} not found.")
+    await session.delete(feedback)
+    await session.commit()
+
+
 async def enrich_feedback_in_background(
     *,
     session_factory: Callable[[], AsyncSession],

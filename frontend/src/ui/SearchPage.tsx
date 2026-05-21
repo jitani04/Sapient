@@ -4,6 +4,7 @@ import { FileText, MessageCircle, StickyNote } from "lucide-react";
 
 import { searchAll } from "../api";
 import type { SearchMaterialResult, SearchNoteResult, SearchResponse, SearchSessionResult } from "../types";
+import { buttonClass } from "./buttonClass";
 
 function highlight(text: string, query: string): React.ReactNode {
   if (!query) return text;
@@ -108,8 +109,8 @@ export function SearchPage() {
             Try a broader term or add study material to this subject.
           </p>
           <div className="empty-state-actions">
-            <Link className="button button-secondary" to="/dashboard">Open subjects</Link>
-            <Link className="button button-secondary" to="/notes">View notes</Link>
+            <Link className={buttonClass("secondary")} to="/dashboard">Open subjects</Link>
+            <Link className={buttonClass("secondary")} to="/notes">View notes</Link>
           </div>
         </div>
       )}

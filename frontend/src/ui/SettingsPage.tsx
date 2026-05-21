@@ -6,6 +6,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { useReadingPrefs } from "../ReadingPrefsContext";
 import type { FontSize, FontFamily } from "../readingPrefs";
 import type { TutorVoice } from "../types";
+import { buttonClass } from "./buttonClass";
 
 const POMODORO_KEY = "sapient-pomodoro";
 const POMODORO_DURATION_KEY = "sapient-pomodoro-duration";
@@ -292,7 +293,7 @@ export function SettingsPage() {
             {customizationError ? <p className="error-text">{customizationError}</p> : null}
 
             <div className="settings-actions">
-              <button className="button button-primary" disabled={savingCustomization} type="submit">
+              <button className={buttonClass("primary")} disabled={savingCustomization} type="submit">
                 {savingCustomization ? "Saving…" : "Save tutor"}
               </button>
             </div>

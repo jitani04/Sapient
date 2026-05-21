@@ -9,6 +9,7 @@ from app.schemas.feedback import FeedbackAnalyticsRead, FeedbackCreate, Feedback
 from app.services.errors import ConversationNotFoundError
 from app.services.feedback_service import (
     create_or_update_feedback,
+    delete_feedback_for_message,
     enrich_feedback_in_background,
     feedback_analytics_for_user,
 )
@@ -36,6 +37,18 @@ async def create_feedback_endpoint(
         )
 
     return FeedbackRead.model_validate(feedback)
+
+
+@router.delete("/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_feedback_endpoint(
+    message_id: int,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> None:
+    try:
+        await delete_feedback_for_message(session=session, user_id=user_id, message_id=message_id)
+    except ConversationNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found.") from exc
 
 
 @router.get("/analytics", response_model=FeedbackAnalyticsRead)

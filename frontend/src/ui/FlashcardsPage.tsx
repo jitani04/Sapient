@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 import { createConversation, getDueFlashcards, reviewFlashcard } from "../api";
 import type { Flashcard } from "../types";
+import { buttonClass } from "./buttonClass";
 
 const RATINGS: { label: string; quality: number; className: string; hint: string }[] = [
   { label: "Forgot",  quality: 1, className: "flash-btn-again", hint: "Show this again soon" },
@@ -96,13 +97,13 @@ export function FlashcardsView({ subject }: { subject: string }) {
         )}
         <div className="flash-done-actions">
           {sessionDone && (
-            <button className="button button-secondary" onClick={handleRestart} type="button">
+            <button className={buttonClass("secondary")} onClick={handleRestart} type="button">
               Check for more
             </button>
           )}
-          <Link className="button button-secondary" to={`/projects/${encodedSubject}`}>Open subject</Link>
+          <Link className={buttonClass("secondary")} to={`/projects/${encodedSubject}`}>Open subject</Link>
           <button
-            className="button button-primary"
+            className={buttonClass("primary")}
             disabled={newSessionMutation.isPending}
             onClick={() => newSessionMutation.mutate()}
             type="button"

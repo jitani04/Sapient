@@ -473,6 +473,7 @@ async def stream_chat(
     user_id: int,
     user_message: str,
     system_prompt: str,
+    user_message_id: int | None = None,
     image_service: WebImageService | None = None,
     web_search_service: LangSearchWebSearch | None = None,
     resource_provider: YouTubeResourceProvider | None = None,
@@ -483,10 +484,16 @@ async def stream_chat(
     conv = await get_conversation_for_user(session=session, conversation_id=conversation_id, user_id=user_id)
     subject = conv.subject
 
-    user_msg = Message(conversation_id=conversation_id, role=MessageRole.USER, content=user_message)
-    session.add(user_msg)
-    await session.commit()
-    await session.refresh(user_msg)
+    if user_message_id is None:
+        user_msg = Message(conversation_id=conversation_id, role=MessageRole.USER, content=user_message)
+        session.add(user_msg)
+        await session.commit()
+        await session.refresh(user_msg)
+    else:
+        user_msg = await session.get(Message, user_message_id)
+        if user_msg is None or user_msg.conversation_id != conversation_id or user_msg.role != MessageRole.USER:
+            raise ValueError("User message not found.")
+        user_message = user_msg.content
 
     history_result = await session.execute(
         select(Message)

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { createConversation, generateMindMap, listProjectProfiles, setupProject, uploadMaterial } from "../api";
 import { formatSubjectName } from "../subjects";
+import { buttonClass } from "./buttonClass";
 
 const MATERIAL_ACCEPT = ".pdf,.pptx,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/x-markdown";
 
@@ -154,8 +155,8 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
                 />
               </label>
               <div className="flow-actions">
-                <button className="button button-secondary" onClick={onClose} type="button">Cancel</button>
-                <button className="button button-primary" disabled={!subject.trim()} type="submit">Continue</button>
+                <button className={buttonClass("secondary")} onClick={onClose} type="button">Cancel</button>
+                <button className={buttonClass("primary")} disabled={!subject.trim()} type="submit">Continue</button>
               </div>
             </form>
           </>
@@ -184,10 +185,10 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
             {error ? <p className="error-text">{error}</p> : null}
 
             <div className="flow-actions">
-              <button className="button button-secondary" disabled={busy} onClick={() => initialSubject ? onClose() : setStep("topic")} type="button">
+              <button className={buttonClass("secondary")} disabled={busy} onClick={() => initialSubject ? onClose() : setStep("topic")} type="button">
                 {initialSubject ? "Cancel" : "Back"}
               </button>
-              <button className="button button-primary" disabled={busy} onClick={() => void handleMaterialsContinue()} type="button">
+              <button className={buttonClass("primary")} disabled={busy} onClick={() => void handleMaterialsContinue()} type="button">
                 {uploading ? "Uploading..." : "Continue"}
               </button>
             </div>
@@ -224,8 +225,8 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
             {error ? <p className="error-text">{error}</p> : null}
 
             <div className="flow-actions">
-              <button className="button button-secondary" disabled={busy} onClick={() => setStep("materials")} type="button">Back</button>
-              <button className="button button-primary" disabled={busy} onClick={() => startMutation.mutate()} type="button">
+              <button className={buttonClass("secondary")} disabled={busy} onClick={() => setStep("materials")} type="button">Back</button>
+              <button className={buttonClass("primary")} disabled={busy} onClick={() => startMutation.mutate()} type="button">
                 {startMutation.isPending ? "Creating..." : "Start subject"}
               </button>
             </div>

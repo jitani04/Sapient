@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { buttonClass } from "./ui/buttonClass";
+
 interface ConfirmOptions {
   title?: string;
   message: string;
@@ -60,17 +62,24 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       {pending &&
         createPortal(
           <div
-            className="confirm-overlay"
+            className="fixed inset-0 z-[1300] flex items-center justify-center p-6 bg-[rgba(15,23,36,0.5)]"
             onClick={() => handleResolve(false)}
             role="dialog"
             aria-modal="true"
           >
-            <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-              {pending.title && <h2 className="confirm-title">{pending.title}</h2>}
-              <p className="confirm-message">{pending.message}</p>
-              <div className="confirm-actions">
+            <div
+              className="w-full max-w-[440px] rounded-[14px] px-[1.4rem] pt-5 pb-4 bg-[var(--panel-bg,#fff)] shadow-[0_18px_48px_rgba(0,0,0,0.25)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {pending.title && (
+                <h2 className="mb-2 text-[1.05rem] font-semibold">{pending.title}</h2>
+              )}
+              <p className="mb-[1.1rem] leading-[1.5] text-[var(--text-soft,#4c6583)]">
+                {pending.message}
+              </p>
+              <div className="flex justify-end gap-2">
                 <button
-                  className="button button-secondary"
+                  className={buttonClass("secondary")}
                   onClick={() => handleResolve(false)}
                   type="button"
                 >
@@ -78,7 +87,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 </button>
                 <button
                   ref={confirmBtnRef}
-                  className={`button ${pending.danger ? "button-danger" : "button-primary"}`}
+                  className={buttonClass(pending.danger ? "danger" : "primary")}
                   onClick={() => handleResolve(true)}
                   type="button"
                 >

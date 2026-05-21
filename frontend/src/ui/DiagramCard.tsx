@@ -46,15 +46,18 @@ function MermaidSvg({ source, idPrefix }: { source: string; idPrefix: string }) 
 
   if (error) {
     return (
-      <div className="diagram-error">
-        <div className="diagram-error-title">Couldn't render diagram</div>
-        <pre className="diagram-error-source">{source}</pre>
+      <div>
+        <div>Couldn't render diagram</div>
+        <pre>{source}</pre>
       </div>
     );
   }
 
-  return <div ref={containerRef} className="mermaid-svg" />;
+  return <div ref={containerRef} />;
 }
+
+const ACTION_BTN_BASE =
+  "inline-flex cursor-pointer items-center gap-[0.3rem] whitespace-nowrap rounded-[5px] border px-2 py-[0.2rem] text-[0.72rem] font-semibold transition-colors";
 
 export function DiagramCard({ diagram, onSave, saved }: Props) {
   const [fullscreen, setFullscreen] = useState(false);
@@ -68,14 +71,28 @@ export function DiagramCard({ diagram, onSave, saved }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
+  const saveButtonClasses = [
+    ACTION_BTN_BASE,
+    saved
+      ? "border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]"
+      : "border-[var(--panel-border)] bg-transparent text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]",
+  ].join(" ");
+
+  const fullscreenButtonClasses = [
+    ACTION_BTN_BASE,
+    "flex-shrink-0 border-[var(--panel-border)] bg-transparent text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]",
+  ].join(" ");
+
   return (
     <div className="diagram-card">
-      <div className="diagram-card-header">
-        {diagram.title && <span className="diagram-card-title">{diagram.title}</span>}
-        <div className="diagram-card-actions">
+      <div className="flex items-center justify-between gap-2 border-b border-b-[var(--panel-border)] px-[0.875rem] py-[0.45rem]">
+        {diagram.title && (
+          <span className="text-[0.8rem] font-bold text-[var(--text-main)]">{diagram.title}</span>
+        )}
+        <div className="inline-flex flex-shrink-0 items-center gap-[0.35rem]">
           {onSave && (
             <button
-              className={`diagram-action-btn${saved ? " saved" : ""}`}
+              className={saveButtonClasses}
               onClick={() => onSave(diagram)}
               title={saved ? "Saved to notes" : "Save to notes"}
               type="button"
@@ -87,7 +104,7 @@ export function DiagramCard({ diagram, onSave, saved }: Props) {
             </button>
           )}
           <button
-            className="diagram-fullscreen-btn"
+            className={fullscreenButtonClasses}
             onClick={() => setFullscreen(true)}
             title="Open full screen"
             type="button"
@@ -104,19 +121,25 @@ export function DiagramCard({ diagram, onSave, saved }: Props) {
       </div>
 
       {fullscreen && createPortal(
-        <div className="diagram-overlay" onClick={() => setFullscreen(false)}>
-          <div className="diagram-overlay-inner" onClick={(e) => e.stopPropagation()}>
-            <div className="diagram-overlay-header">
-              <span className="diagram-overlay-title">{diagram.title}</span>
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-[rgba(0,0,0,0.6)] p-6"
+          onClick={() => setFullscreen(false)}
+        >
+          <div
+            className="flex h-full w-full flex-col overflow-hidden rounded-xl bg-white shadow-[0_24px_80px_rgba(0,0,0,0.3)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-shrink-0 items-center justify-between border-b border-b-[var(--panel-border)] px-4 py-[0.7rem]">
+              <span className="text-[0.875rem] font-bold text-[var(--text-main)]">{diagram.title}</span>
               <button
-                className="diagram-overlay-close"
+                className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-[var(--panel-border)] bg-transparent text-[0.85rem] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text-main)]"
                 onClick={() => setFullscreen(false)}
                 type="button"
               >
                 ✕
               </button>
             </div>
-            <div className="diagram-overlay-canvas">
+            <div className="relative flex-1">
               <MermaidSvg source={diagram.source} idPrefix={`diagram-fs-${diagram.id}`} />
             </div>
           </div>

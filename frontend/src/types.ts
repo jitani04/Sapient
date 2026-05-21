@@ -93,7 +93,9 @@ export interface AuthResult {
 }
 
 export interface ChatRequest {
-  message: string;
+  message?: string;
+  retry_message_id?: number;
+  edit_message_id?: number;
 }
 
 export type MaterialStatus = "processing" | "ready" | "failed";

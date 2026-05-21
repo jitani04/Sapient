@@ -7,6 +7,7 @@ import { listConversations } from "../api";
 import { normalizeSubject } from "../subjects";
 import type { Conversation } from "../types";
 import { useStartSessionModal } from "./StartSessionModalContext";
+import { buttonClass } from "./buttonClass";
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
@@ -49,7 +50,7 @@ export function HistoryPage() {
           <h1 className="page-title">History</h1>
           <p className="page-subtitle">All past study sessions, grouped by subject.</p>
         </div>
-        <button className="button button-primary" onClick={() => openStartSession()} type="button">New study session</button>
+        <button className={buttonClass("primary")} onClick={() => openStartSession()} type="button">New study session</button>
       </div>
 
       <div className="two-col" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
@@ -77,7 +78,7 @@ export function HistoryPage() {
           <div className="empty-state-icon"><Clock size={26} strokeWidth={1.6} /></div>
           <h3>No study sessions yet</h3>
           <p>Your past study sessions will appear here.</p>
-          <button className="button button-primary" onClick={() => openStartSession()} type="button">Start a study session</button>
+          <button className={buttonClass("primary")} onClick={() => openStartSession()} type="button">Start a study session</button>
         </div>
       ) : null}
 
@@ -95,7 +96,7 @@ export function HistoryPage() {
                 </div>
                 <div className="history-item-actions">
                   <span className="pill pill-blue">{s.messages.length} msg</span>
-                  <Link className="button button-secondary" to={`/sessions/${s.id}`}
+                  <Link className={buttonClass("secondary")} to={`/sessions/${s.id}`}
                     style={{ fontSize: "0.78rem", padding: "0.35rem 0.75rem" }}>
                     Resume
                   </Link>

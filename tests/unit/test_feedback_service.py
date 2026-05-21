@@ -11,6 +11,7 @@ from app.services.feedback_service import (
     FeedbackClassification,
     _normalise_classification,
     create_or_update_feedback,
+    delete_feedback_for_message,
     maybe_store_preference_memory,
 )
 
@@ -40,6 +41,22 @@ class _FakeSession:
     async def refresh(self, value):
         if getattr(value, "id", None) is None:
             value.id = 1
+
+
+class _DeleteFeedbackSession:
+    def __init__(self, feedback):
+        self.feedback = feedback
+        self.deleted = None
+        self.commits = 0
+
+    async def scalar(self, _stmt):
+        return self.feedback
+
+    async def delete(self, value):
+        self.deleted = value
+
+    async def commit(self):
+        self.commits += 1
 
 
 def _settings(**overrides):
@@ -111,6 +128,17 @@ async def test_thumbs_down_with_no_text_saves_rating(monkeypatch) -> None:
     assert feedback.rating == "thumbs_down"
     assert feedback.correction is None
     assert feedback.llm_feedback_summary is None
+
+
+@pytest.mark.asyncio
+async def test_delete_feedback_for_message_removes_existing_feedback() -> None:
+    feedback = MessageFeedback(user_id=7, message_id=22, conversation_id=10, rating="thumbs_up")
+    session = _DeleteFeedbackSession(feedback)
+
+    await delete_feedback_for_message(session=session, user_id=7, message_id=22)
+
+    assert session.deleted is feedback
+    assert session.commits == 1
 
 
 @pytest.mark.asyncio

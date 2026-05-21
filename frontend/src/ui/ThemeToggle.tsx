@@ -23,7 +23,7 @@ export function ThemeToggle({ variant = "sidebar", className }: Props) {
     return (
       <button
         aria-label={label}
-        className={`theme-icon-btn ${className ?? ""}`}
+        className={`inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-[var(--panel-border,rgba(115,147,179,0.25))] bg-transparent text-[var(--text-soft,#4c6583)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-dim)] hover:text-[var(--accent)] ${className ?? ""}`}
         onClick={() => setTheme((current) => toggleTheme(current))}
         title={label}
         type="button"
@@ -36,11 +36,10 @@ export function ThemeToggle({ variant = "sidebar", className }: Props) {
   return (
     <button
       aria-label={label}
-      className={`sidebar-item ${className ?? ""}`}
+      className={`sidebar-item w-full ${className ?? ""}`}
       onClick={() => setTheme((current) => toggleTheme(current))}
       title={label}
       type="button"
-      style={{ width: "100%" }}
     >
       <span className="sidebar-item-icon">{icon}</span>
       <span className="sidebar-item-label">{isDark ? "Light mode" : "Dark mode"}</span>

@@ -2,12 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChangeEvent, FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowUp, Bookmark, BookmarkCheck, FileText, FolderOpen, Pause, Play, Plus, RotateCcw } from "lucide-react";
+import { ArrowUp, Bookmark, BookmarkCheck, FileText, FolderOpen, Pause, PencilLine, Play, Plus, RotateCcw } from "lucide-react";
 
-import { RateLimitError, createConversation, createKeyIdea, deleteConversation, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listConversationResources, listMaterials, listModels, streamChat, submitFeedback, updateConversationModel, uploadMaterial } from "../api";
+import { RateLimitError, createConversation, createKeyIdea, deleteConversation, deleteFeedbackForMessage, deleteKeyIdea, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listConversationResources, listMaterials, listModels, streamChat, submitFeedback, updateConversationModel, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
 import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, QuizData, Resource, ResourceData, RetrievedSource, WebSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
+import { buttonClass } from "./buttonClass";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
 import { ResourceCard } from "./ResourceCard";
@@ -58,6 +59,19 @@ interface FeedbackButtonsProps {
   message: Message;
   draft: FeedbackDraft | undefined;
   onRate: (message: Message, rating: FeedbackRating) => void;
+}
+
+function appendUniqueBy<T>(existing: T[], incoming: T[], getKey: (item: T) => string | number): T[] {
+  if (incoming.length === 0) return existing;
+  const seen = new Set(existing.map(getKey));
+  const next = [...existing];
+  for (const item of incoming) {
+    const key = getKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    next.push(item);
+  }
+  return next;
 }
 
 function FeedbackButtons({ message, draft, onRate }: FeedbackButtonsProps) {
@@ -285,6 +299,11 @@ function buildMessageWithAttachments(message: string, materials: Material[]): st
   return `I attached these files for this subject:\n${files}\n\nPlease use them to help me study.`;
 }
 
+interface SendOptions {
+  retryMessageId?: number;
+  editMessageId?: number;
+}
+
 export function ChatPage() {
   const params = useParams();
   const navigate = useNavigate();
@@ -319,6 +338,7 @@ export function ChatPage() {
   const [breakDismissed, setBreakDismissed] = useState(false);
   const showPomodoroPrompt = pomodoroEnabled && timer.expired && !breakDismissed;
   const [draft, setDraft] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const streamSmoothing = useStreamSmoothing();
   const streamedText = streamSmoothing.text;
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -335,10 +355,15 @@ export function ChatPage() {
   // Artifacts streamed during the current assistant turn, awaiting an `end`
   // event so we can tag them with the assistant_message_id and render inline.
   const [savedSnippetKeys, setSavedSnippetKeys] = useState<Set<string>>(new Set());
+  const [savedSnippetIdeaIds, setSavedSnippetIdeaIds] = useState<Record<string, number>>({});
   const [pendingDiagrams, setPendingDiagrams] = useState<DiagramData[]>([]);
   const [pendingImages, setPendingImages] = useState<ImageData[]>([]);
   const [pendingResources, setPendingResources] = useState<ResourceData[]>([]);
   const [pendingQuizzes, setPendingQuizzes] = useState<QuizData[]>([]);
+  const pendingDiagramsRef = useRef<DiagramData[]>([]);
+  const pendingImagesRef = useRef<ImageData[]>([]);
+  const pendingResourcesRef = useRef<ResourceData[]>([]);
+  const pendingQuizzesRef = useRef<QuizData[]>([]);
   const [messageDiagrams, setMessageDiagrams] = useState<Record<number, DiagramData[]>>({});
   const [messageImages, setMessageImages] = useState<Record<number, ImageData[]>>({});
   const [messageResources, setMessageResources] = useState<Record<number, ResourceData[]>>({});
@@ -490,6 +515,10 @@ export function ChatPage() {
     setSseDiagrams([]);
     setSseImages([]);
     setSseResources([]);
+    pendingDiagramsRef.current = [];
+    pendingImagesRef.current = [];
+    pendingResourcesRef.current = [];
+    pendingQuizzesRef.current = [];
     setPendingDiagrams([]);
     setPendingImages([]);
     setPendingResources([]);
@@ -498,7 +527,10 @@ export function ChatPage() {
     setMessageImages({});
     setMessageResources({});
     setMessageQuizzes({});
+    setSavedSnippetKeys(new Set());
+    setSavedSnippetIdeaIds({});
     setShowNotes(false);
+    setEditingMessageId(null);
   }, [conversationId]);
 
   function autoGrow() {
@@ -506,6 +538,36 @@ export function ChatPage() {
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }
+
+  function pruneMessageArtifactsAfter(messageId: number) {
+    const pruneRecord = <T,>(record: Record<number, T[]>): Record<number, T[]> => (
+      Object.fromEntries(Object.entries(record).filter(([id]) => Number(id) <= messageId))
+    );
+    setMessageDiagrams(pruneRecord);
+    setMessageImages(pruneRecord);
+    setMessageResources(pruneRecord);
+    setMessageQuizzes(pruneRecord);
+  }
+
+  function truncateConversationAfterMessage(conversationIdToUpdate: number, messageId: number, replacementContent?: string) {
+    queryClient.setQueryData<Conversation | undefined>(
+      ["conversation", conversationIdToUpdate],
+      (cur) => {
+        if (!cur) return cur;
+        return {
+          ...cur,
+          messages: cur.messages
+            .filter((msg) => msg.id <= messageId)
+            .map((msg) => (
+              msg.id === messageId && replacementContent !== undefined
+                ? { ...msg, content: replacementContent }
+                : msg
+            )),
+        };
+      },
+    );
+    pruneMessageArtifactsAfter(messageId);
   }
 
   function updateAttachment(id: string, patch: Partial<Pick<ComposerAttachment, "status" | "error">>) {
@@ -597,8 +659,10 @@ export function ChatPage() {
     return uploaded.map(({ material }) => material);
   }
 
-  async function send(message: string, attachmentSnapshot: ComposerAttachment[] = []) {
-    if ((!message.trim() && attachmentSnapshot.length === 0) || isStreaming) return;
+  async function send(message: string, attachmentSnapshot: ComposerAttachment[] = [], options: SendOptions = {}) {
+    const isRetry = options.retryMessageId !== undefined;
+    const isEdit = options.editMessageId !== undefined;
+    if ((!message.trim() && attachmentSnapshot.length === 0 && !isRetry) || isStreaming) return;
 
     if (pomodoroEnabled) timer.start();
     setStreamError(null);
@@ -607,6 +671,14 @@ export function ChatPage() {
     setSources([]);
     setWebSources([]);
     setShowSources(false);
+    pendingDiagramsRef.current = [];
+    pendingImagesRef.current = [];
+    pendingResourcesRef.current = [];
+    pendingQuizzesRef.current = [];
+    setPendingDiagrams([]);
+    setPendingImages([]);
+    setPendingResources([]);
+    setPendingQuizzes([]);
     setIsStreaming(true);
 
     let target = conversation;
@@ -617,28 +689,42 @@ export function ChatPage() {
         target = await createMutation.mutateAsync(context?.subject);
       }
 
-      const targetSubject = target.subject ?? context?.subject ?? undefined;
-      const uploadedMaterials = await uploadAttachmentsForProject(attachmentSnapshot, targetSubject);
-      const outboundMessage = buildMessageWithAttachments(message.trim(), uploadedMaterials);
+      let outboundMessage = message.trim();
+      if (!isRetry && !isEdit) {
+        const targetSubject = target.subject ?? context?.subject ?? undefined;
+        const uploadedMaterials = await uploadAttachmentsForProject(attachmentSnapshot, targetSubject);
+        outboundMessage = buildMessageWithAttachments(outboundMessage, uploadedMaterials);
 
-      const optimistic: Message = {
-        id: -1, conversation_id: target.id,
-        role: "user", content: outboundMessage,
-        created_at: new Date().toISOString(),
-      };
+        const optimistic: Message = {
+          id: -1, conversation_id: target.id,
+          role: "user", content: outboundMessage,
+          created_at: new Date().toISOString(),
+        };
 
-      queryClient.setQueryData<Conversation | undefined>(
-        ["conversation", target.id],
-        (cur) => cur ? { ...cur, messages: [...cur.messages, optimistic] } : cur,
-      );
+        queryClient.setQueryData<Conversation | undefined>(
+          ["conversation", target.id],
+          (cur) => cur ? { ...cur, messages: [...cur.messages, optimistic] } : cur,
+        );
+      } else if (isEdit) {
+        truncateConversationAfterMessage(target.id, options.editMessageId!, outboundMessage);
+      } else if (isRetry) {
+        truncateConversationAfterMessage(target.id, options.retryMessageId!);
+      }
 
       didStartStream = true;
-      await streamChat(target.id, { message: outboundMessage }, handleEvent);
+      await streamChat(target.id, {
+        message: isRetry ? undefined : outboundMessage,
+        retry_message_id: options.retryMessageId,
+        edit_message_id: options.editMessageId,
+      }, handleEvent);
       await queryClient.invalidateQueries({ queryKey: ["conversation", target.id] });
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
       await queryClient.invalidateQueries({ queryKey: ["conversation-quizzes", target.id] });
       await queryClient.invalidateQueries({ queryKey: ["key-ideas", target.id] });
       setAttachments([]);
+      if (isEdit && editingMessageId === options.editMessageId) {
+        setEditingMessageId(null);
+      }
     } catch (err) {
       if (!didStartStream) {
         setDraft(message);
@@ -665,7 +751,8 @@ export function ChatPage() {
     if (!message && attachmentSnapshot.length === 0) return;
 
     setDraft("");
-    await send(message, attachmentSnapshot);
+    const editMessageId = editingMessageId ?? undefined;
+    await send(message, editMessageId ? [] : attachmentSnapshot, editMessageId ? { editMessageId } : {});
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -696,6 +783,30 @@ export function ChatPage() {
     artifactType: "text" | "diagram" | "image";
     artifactData: KeyIdeaArtifactData;
   }) {
+    const savedIdeaId = savedSnippetIdeaIds[args.key];
+    if (savedIdeaId) {
+      try {
+        await deleteKeyIdea(savedIdeaId);
+        setSavedSnippetKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(args.key);
+          return next;
+        });
+        setSavedSnippetIdeaIds((prev) => {
+          const next = { ...prev };
+          delete next[args.key];
+          return next;
+        });
+        setSseKeyIdeas((existing) => existing.filter((idea) => idea.id !== savedIdeaId));
+        if (conversationId !== null) {
+          void queryClient.invalidateQueries({ queryKey: ["key-ideas", conversationId] });
+        }
+        void queryClient.invalidateQueries({ queryKey: ["all-key-ideas"] });
+      } catch (err) {
+        console.error("Remove from notes failed", err);
+      }
+      return;
+    }
     if (savedSnippetKeys.has(args.key)) return;
     try {
       const idea = await createKeyIdea({
@@ -710,6 +821,7 @@ export function ChatPage() {
         next.add(args.key);
         return next;
       });
+      setSavedSnippetIdeaIds((prev) => ({ ...prev, [args.key]: idea.id }));
       // Make the new note appear in the side panel immediately.
       setSseKeyIdeas((existing) => [...existing, idea]);
       setShowNotes(true);
@@ -725,11 +837,23 @@ export function ChatPage() {
   function handleSaveMessageSnippet(msg: Message) {
     const selection = typeof window !== "undefined" ? window.getSelection() : null;
     const rawSelected = selection ? selection.toString().trim() : "";
+    const wholeMessageKey = `msg-${msg.id}`;
+    if (savedSnippetIdeaIds[wholeMessageKey]) {
+      void saveSnippetToNotes({
+        key: wholeMessageKey,
+        concept: msg.content.length > 80 ? `${msg.content.slice(0, 77)}…` : msg.content,
+        summary: msg.content,
+        artifactType: "text",
+        artifactData: { kind: "text", text: msg.content, source_message_id: msg.id },
+      });
+      return;
+    }
     const text = rawSelected.length > 0 ? rawSelected : msg.content.trim();
     if (!text) return;
+    const key = rawSelected.length > 0 ? `msg-${msg.id}-${text.slice(0, 32)}` : wholeMessageKey;
     const concept = text.length > 80 ? `${text.slice(0, 77)}…` : text;
     void saveSnippetToNotes({
-      key: `msg-${msg.id}-${text.slice(0, 32)}`,
+      key,
       concept,
       summary: text,
       artifactType: "text",
@@ -781,22 +905,26 @@ export function ChatPage() {
     }
     if (event.event === "quiz") {
       setSseQuizzes((q) => [...q, event.data]);
-      setPendingQuizzes((q) => [...q, event.data]);
+      pendingQuizzesRef.current = appendUniqueBy(pendingQuizzesRef.current, [event.data], (q) => q.quiz_id);
+      setPendingQuizzes(pendingQuizzesRef.current);
       return;
     }
     if (event.event === "diagram") {
       setSseDiagrams((d) => [...d, event.data]);
-      setPendingDiagrams((d) => [...d, event.data]);
+      pendingDiagramsRef.current = appendUniqueBy(pendingDiagramsRef.current, [event.data], (d) => d.id);
+      setPendingDiagrams(pendingDiagramsRef.current);
       return;
     }
     if (event.event === "image") {
       setSseImages((images) => [...images, event.data]);
-      setPendingImages((images) => [...images, event.data]);
+      pendingImagesRef.current = appendUniqueBy(pendingImagesRef.current, [event.data], (image) => image.id);
+      setPendingImages(pendingImagesRef.current);
       return;
     }
     if (event.event === "resource") {
       setSseResources((r) => [...r, event.data]);
-      setPendingResources((r) => [...r, event.data]);
+      pendingResourcesRef.current = appendUniqueBy(pendingResourcesRef.current, [event.data], (r) => r.id);
+      setPendingResources(pendingResourcesRef.current);
       return;
     }
     if (event.event === "key_idea") {
@@ -814,50 +942,49 @@ export function ChatPage() {
     }
     if (event.event === "end") {
       const assistantMessageId = event.data.assistant_message_id;
+      const diagramsToAttach = pendingDiagramsRef.current;
+      const imagesToAttach = pendingImagesRef.current;
+      const resourcesToAttach = pendingResourcesRef.current;
+      const quizzesToAttach = pendingQuizzesRef.current.map((q) => ({ ...q, message_id: assistantMessageId }));
+
+      pendingDiagramsRef.current = [];
+      pendingImagesRef.current = [];
+      pendingResourcesRef.current = [];
+      pendingQuizzesRef.current = [];
+
       messageTracesRef.current[assistantMessageId] = {
         latency_ms: event.data.latency_ms ?? null,
         retrieved_chunk_ids: event.data.retrieved_chunk_ids ?? null,
         tool_trace: event.data.tool_trace ?? null,
       };
-      setPendingDiagrams((pending) => {
-        if (pending.length > 0) {
-          setMessageDiagrams((existing) => ({
-            ...existing,
-            [assistantMessageId]: [...(existing[assistantMessageId] ?? []), ...pending],
-          }));
-        }
-        return [];
-      });
-      setPendingImages((pending) => {
-        if (pending.length > 0) {
-          setMessageImages((existing) => ({
-            ...existing,
-            [assistantMessageId]: [...(existing[assistantMessageId] ?? []), ...pending],
-          }));
-        }
-        return [];
-      });
-      setPendingResources((pending) => {
-        if (pending.length > 0) {
-          setMessageResources((existing) => ({
-            ...existing,
-            [assistantMessageId]: [...(existing[assistantMessageId] ?? []), ...pending],
-          }));
-        }
-        return [];
-      });
-      setPendingQuizzes((pending) => {
-        if (pending.length > 0) {
-          setMessageQuizzes((existing) => ({
-            ...existing,
-            [assistantMessageId]: [
-              ...(existing[assistantMessageId] ?? []),
-              ...pending.map((q) => ({ ...q, message_id: assistantMessageId })),
-            ],
-          }));
-        }
-        return [];
-      });
+      setPendingDiagrams([]);
+      setPendingImages([]);
+      setPendingResources([]);
+      setPendingQuizzes([]);
+      if (diagramsToAttach.length > 0) {
+        setMessageDiagrams((existing) => ({
+          ...existing,
+          [assistantMessageId]: appendUniqueBy(existing[assistantMessageId] ?? [], diagramsToAttach, (d) => d.id),
+        }));
+      }
+      if (imagesToAttach.length > 0) {
+        setMessageImages((existing) => ({
+          ...existing,
+          [assistantMessageId]: appendUniqueBy(existing[assistantMessageId] ?? [], imagesToAttach, (image) => image.id),
+        }));
+      }
+      if (resourcesToAttach.length > 0) {
+        setMessageResources((existing) => ({
+          ...existing,
+          [assistantMessageId]: appendUniqueBy(existing[assistantMessageId] ?? [], resourcesToAttach, (r) => r.id),
+        }));
+      }
+      if (quizzesToAttach.length > 0) {
+        setMessageQuizzes((existing) => ({
+          ...existing,
+          [assistantMessageId]: appendUniqueBy(existing[assistantMessageId] ?? [], quizzesToAttach, (q) => q.quiz_id),
+        }));
+      }
       streamSmoothing.finish();
       if (conversationId !== null) {
         void queryClient.invalidateQueries({ queryKey: ["conversation-resources", conversationId] });
@@ -938,8 +1065,51 @@ export function ChatPage() {
     }
   }
 
+  async function removeFeedback(message: Message) {
+    const existing = feedbackDrafts[message.id];
+    setFeedbackDrafts((current) => ({
+      ...current,
+      [message.id]: {
+        rating: existing?.rating ?? "thumbs_up",
+        feedbackText: existing?.feedbackText ?? "",
+        correction: existing?.correction ?? "",
+        saved: false,
+        saving: true,
+        error: null,
+      },
+    }));
+
+    try {
+      await deleteFeedbackForMessage(message.id);
+      setFeedbackDrafts((current) => {
+        const next = { ...current };
+        delete next[message.id];
+        return next;
+      });
+      setFeedbackModalFor((open) => (open === message.id ? null : open));
+    } catch (error) {
+      setFeedbackDrafts((current) => ({
+        ...current,
+        [message.id]: {
+          ...(current[message.id] ?? existing ?? {
+            rating: "thumbs_up",
+            feedbackText: "",
+            correction: "",
+            saved: false,
+          }),
+          saving: false,
+          error: error instanceof Error ? error.message : "Feedback failed to remove.",
+        },
+      }));
+    }
+  }
+
   function handleFeedbackRating(message: Message, rating: FeedbackRating) {
     const existing = feedbackDrafts[message.id];
+    if (existing?.saved && existing.rating === rating) {
+      void removeFeedback(message);
+      return;
+    }
     setFeedbackModalFor(message.id);
     void saveFeedback(
       message,
@@ -964,7 +1134,40 @@ export function ChatPage() {
 
   function setDraftAndFocus(text: string) {
     setDraft(text);
-    textareaRef.current?.focus();
+    window.setTimeout(() => {
+      autoGrow();
+      textareaRef.current?.focus();
+    }, 0);
+  }
+
+  function handleEditUserMessage(message: Message) {
+    if (isStreaming) return;
+    setEditingMessageId(message.id);
+    setAttachments([]);
+    setDraftAndFocus(message.content);
+  }
+
+  function cancelEditingMessage() {
+    setEditingMessageId(null);
+    setDraft("");
+    window.setTimeout(autoGrow, 0);
+  }
+
+  function findPreviousUserMessage(index: number): Message | null {
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const candidate = messages[i];
+      if (candidate.role === "user" && candidate.id > 0) return candidate;
+    }
+    return null;
+  }
+
+  async function handleRetryAssistantMessage(index: number) {
+    if (isStreaming) return;
+    const userMessage = findPreviousUserMessage(index);
+    if (!userMessage) return;
+    setEditingMessageId(null);
+    setDraft("");
+    await send("", [], { retryMessageId: userMessage.id });
   }
 
   const title = conversation?.title?.trim() || context?.subject || (conversation ? `Study session #${conversation.id}` : "New study session");
@@ -1160,6 +1363,16 @@ export function ChatPage() {
                   return (
                     <div key={`${msg.id}-${msg.created_at}`} className="msg-user-row">
                       <div className="msg-user-bubble">{msg.content}</div>
+                      <button
+                        className="msg-user-action-btn"
+                        disabled={isStreaming || msg.id < 0}
+                        onClick={() => handleEditUserMessage(msg)}
+                        title="Edit and resend"
+                        type="button"
+                        aria-label="Edit message"
+                      >
+                        <PencilLine size={14} strokeWidth={2} />
+                      </button>
                       <CopyButton text={msg.content} />
                     </div>
                   );
@@ -1191,6 +1404,16 @@ export function ChatPage() {
                       <MarkdownText className="msg-text" children={msg.content} webSources={webSources} />
                       <div className={`msg-actions${isLastAssistant ? " msg-actions-pinned" : ""}`}>
                         <CopyButton text={msg.content} />
+                        <button
+                          className="msg-retry-btn"
+                          disabled={isStreaming || !findPreviousUserMessage(idx)}
+                          onClick={() => void handleRetryAssistantMessage(idx)}
+                          type="button"
+                          title="Retry response"
+                          aria-label="Retry response"
+                        >
+                          <RotateCcw size={14} strokeWidth={2} />
+                        </button>
                         <FeedbackButtons
                           message={msg}
                           draft={feedbackDrafts[msg.id]}
@@ -1230,15 +1453,15 @@ export function ChatPage() {
                           )}
                         </button>
                         {(() => {
-                          const saved = savedSnippetKeys.has(`msg-${msg.id}-`)
+                          const saved = savedSnippetKeys.has(`msg-${msg.id}`)
                             || Array.from(savedSnippetKeys).some((k) => k.startsWith(`msg-${msg.id}-`));
                           return (
                             <button
                               className={`msg-save-btn${saved ? " saved" : ""}`}
                               onClick={() => handleSaveMessageSnippet(msg)}
                               type="button"
-                              title={saved ? "Saved to notes" : "Save selection (or whole message) to notes"}
-                              aria-label={saved ? "Saved to notes" : "Save to notes"}
+                              title={saved ? "Remove from notes" : "Save selection (or whole message) to notes"}
+                              aria-label={saved ? "Remove from notes" : "Save to notes"}
                             >
                               {saved ? <BookmarkCheck size={14} strokeWidth={2} /> : <Bookmark size={14} strokeWidth={2} />}
                             </button>
@@ -1412,6 +1635,12 @@ export function ChatPage() {
               </button>
             ))}
           </div>
+          {editingMessageId !== null ? (
+            <div className="composer-editing-banner">
+              <span>Editing your message. Sending will replace the response that followed it.</span>
+              <button onClick={cancelEditingMessage} type="button">Cancel</button>
+            </div>
+          ) : null}
           {attachments.length > 0 && (
             <div className="composer-attachments">
               {attachments.map((attachment) => (
@@ -1447,9 +1676,9 @@ export function ChatPage() {
             <button
               aria-label="Attach file"
               className="composer-attach-btn"
-              disabled={isStreaming}
+              disabled={isStreaming || editingMessageId !== null}
               onClick={() => fileInputRef.current?.click()}
-              title={context?.subject ? `Attach to ${context.subject}` : "Attach file"}
+              title={editingMessageId !== null ? "Cancel editing to attach files" : context?.subject ? `Attach to ${context.subject}` : "Attach file"}
               type="button"
             >
               <Plus size={17} strokeWidth={2.2} />
@@ -1465,7 +1694,7 @@ export function ChatPage() {
             <textarea
               ref={textareaRef}
               className="composer-textarea"
-              placeholder="Ask a question…"
+              placeholder={editingMessageId !== null ? "Edit your message…" : "Ask a question…"}
               rows={1}
               value={draft}
               onChange={(e) => { setDraft(e.target.value); autoGrow(); }}
@@ -1555,8 +1784,7 @@ export function ChatPage() {
                 </p>
                 <Link
                   to={`/projects/${encodeURIComponent(context.subject)}?tab=materials`}
-                  className="button button-secondary"
-                  style={{ fontSize: "0.78rem", padding: "0.4rem 0.7rem" }}
+                  className={buttonClass("secondary", "px-[0.7rem] py-[0.4rem] text-[0.78rem]")}
                 >
                   Upload material
                 </Link>

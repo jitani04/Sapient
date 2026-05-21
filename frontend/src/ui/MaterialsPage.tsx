@@ -4,6 +4,7 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { FileText, Upload } from "lucide-react";
 
 import { deleteMaterial, listMaterials, uploadMaterial } from "../api";
+import { buttonClass } from "./buttonClass";
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
@@ -119,7 +120,7 @@ export function MaterialsView({ subject }: { subject: string }) {
               </div>
               <div className={`status-dot ${statusClass[m.status] ?? ""}`} />
               <button
-                className="button button-secondary"
+                className={buttonClass("secondary")}
                 style={{ fontSize: "0.76rem", padding: "0.3rem 0.65rem" }}
                 disabled={deleteMutation.isPending}
                 onClick={() => void deleteMutation.mutateAsync(m.id)}

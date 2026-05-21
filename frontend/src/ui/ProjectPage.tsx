@@ -671,8 +671,9 @@ export function ProjectPage() {
 
     void (async () => {
       try {
-        await generateMindMap(decoded);
+        const updatedProfile = await generateMindMap(decoded);
         if (!cancelled) {
+          queryClient.setQueryData(["project-profile", decoded], updatedProfile);
           await queryClient.invalidateQueries({ queryKey: ["project-profile", decoded] });
           await queryClient.invalidateQueries({ queryKey: ["project-profiles"] });
         }
