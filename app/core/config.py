@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     rag_candidate_k: int = Field(default=50, alias="RAG_CANDIDATE_K")
     rag_chunk_size: int = Field(default=1200, alias="RAG_CHUNK_SIZE")
     rag_chunk_overlap: int = Field(default=200, alias="RAG_CHUNK_OVERLAP")
-    rag_reranker_enabled: bool = Field(default=False, alias="RAG_RERANKER_ENABLED")
+    rag_reranker_enabled: bool = Field(default=True, alias="RAG_RERANKER_ENABLED")
     rag_reranker_timeout_seconds: float = Field(default=8.0, alias="RAG_RERANKER_TIMEOUT_SECONDS")
     langsearch_api_key: str = Field(default="", alias="LANGSEARCH_API_KEY")
     langsearch_api_base_url: str = Field(default="https://api.langsearch.com", alias="LANGSEARCH_API_BASE_URL")

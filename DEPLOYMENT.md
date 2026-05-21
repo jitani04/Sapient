@@ -74,8 +74,14 @@ AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 
 RAG_TOP_K=4
+RAG_CANDIDATE_K=50
 RAG_CHUNK_SIZE=1200
 RAG_CHUNK_OVERLAP=200
+RAG_RERANKER_ENABLED=true
+RAG_RERANKER_TIMEOUT_SECONDS=8
+LANGSEARCH_API_KEY=your_langsearch_api_key
+LANGSEARCH_API_BASE_URL=https://api.langsearch.com
+LANGSEARCH_RERANK_MODEL=langsearch-reranker-v1
 
 JWT_SECRET=replace_with_a_long_random_secret
 JWT_ALGORITHM=HS256
@@ -100,6 +106,7 @@ Notes:
 
 - `LLM_API_KEY` is used for both tutor generation and embeddings in the current implementation.
 - `OPENAI_TTS_API_KEY` is used for **both** `/tts` and `/stt`.
+- `RAG_RERANKER_ENABLED=true` is the expected production setting; configure `LANGSEARCH_API_KEY` so retrieved material chunks are reranked before prompt injection.
 - `S3_ENDPOINT_URL` should be blank for AWS S3 and set explicitly for R2, B2, MinIO, or another compatible provider.
 - `EMAIL_PROVIDER=noop` disables real review digest sends. Use `EMAIL_PROVIDER=resend` with a verified sender/domain for production email.
 - `INTERNAL_JOB_TOKEN` protects the scheduled review digest endpoint.

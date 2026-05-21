@@ -11,11 +11,15 @@ The application is organized by **subject**. Each subject can have its own goals
 | Layer | Technology |
 |-------|-----------|
 | Backend | Python 3.11, FastAPI, SQLAlchemy 2.0 async |
-| Database | PostgreSQL + `pgvector` |
-| Object storage | S3-compatible storage for uploaded materials |
+| Runtime and packaging | Docker images deployed on Fly.io |
+| Database | Neon PostgreSQL + `pgvector` |
+| Object storage | S3-compatible storage, such as AWS S3 or Cloudflare R2 |
 | Tutor LLM | Google Gemini via `langchain-google-genai` |
 | Embeddings | Google Generative Language embeddings API |
+| Reranker | Required LangSearch reranker API |
 | Speech | OpenAI Whisper (`whisper-1`) + OpenAI TTS (`tts-1`) |
+| Email | Resend |
+| Scheduler | GitHub Actions |
 | Migrations | Alembic |
 | Frontend | React 19, TypeScript, Vite |
 | Routing | React Router 7 |
@@ -27,30 +31,47 @@ The application is organized by **subject**. Each subject can have its own goals
 ### Figure 1. Production System Design
 
 ```mermaid
-flowchart LR
-    Student["Student browser"]
-    Frontend["React + Vite SPA\nFly app: sapient\nsapient-ats.com"]
-    Backend["FastAPI + Uvicorn\nFly app: sapient-api\napi.sapient-ats.com"]
-    Postgres[("PostgreSQL + pgvector\nusers, sessions, chunks, artifacts")]
-    Storage[("S3-compatible object storage\nuploaded study materials")]
-    Gemini["Google Gemini\nchat generation"]
-    Embeddings["Google embeddings\nmaterial and query vectors"]
-    OpenAI["OpenAI speech\nSTT + TTS"]
-    Search["Web, image, and resource APIs"]
-    Email["Resend\nreview digest email"]
-    Scheduler["GitHub Actions\nscheduled review job"]
+flowchart TB
+    User["fa:fa-user Student"]
+    Domain["fa:fa-globe sapient-ats.com"]
+    Frontend["fa:fa-window-maximize React SPA"]
+    Backend["fa:fa-server FastAPI API"]
+    Docker["fa:fa-cube Docker images"]
+    Fly["fa:fa-cloud Fly.io"]
+    Neon[("fa:fa-database Neon Postgres")]
+    ObjectStore[("fa:fa-archive S3 / R2")]
+    Gemini["fa:fa-robot Gemini"]
+    Embed["fa:fa-vector-square Embeddings"]
+    Rerank["fa:fa-sort-amount-down LangSearch"]
+    OpenAI["fa:fa-microphone OpenAI speech"]
+    Search["fa:fa-search Web APIs"]
+    Resend["fa:fa-envelope Resend"]
+    Actions["fa:fa-clock GitHub Actions"]
 
-    Student --> Frontend
-    Frontend -->|"REST + SSE chat stream"| Backend
-    Frontend -->|"presigned PUT/GET"| Storage
-    Scheduler -->|"POST /internal/review-digests/run"| Backend
-    Backend --> Postgres
-    Backend --> Storage
+    User --> Domain --> Frontend
+    Frontend -->|"REST + SSE"| Backend
+    Frontend -->|"signed upload"| ObjectStore
+
+    subgraph Runtime["Fly.io runtime"]
+        Frontend
+        Backend
+    end
+
+    subgraph Build["Container delivery"]
+        Docker --> Fly
+    end
+
+    Fly --> Frontend
+    Fly --> Backend
+    Backend --> Neon
+    Backend --> ObjectStore
     Backend --> Gemini
-    Backend --> Embeddings
+    Backend --> Embed
+    Backend --> Rerank
     Backend --> OpenAI
     Backend --> Search
-    Backend --> Email
+    Backend --> Resend
+    Actions -->|"review job"| Backend
 ```
 
 ### Figure 2. Tutor Turn and Agentic Planning Flow
@@ -84,23 +105,25 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    Upload["Student selects PDF, TXT, or Markdown"]
-    Presign["POST /materials/presign"]
-    Put["Browser uploads file directly to object storage"]
-    Create["POST /materials\ncreate metadata row"]
-    Extract["MaterialService extracts text"]
-    Chunk["Split into semantic chunks"]
-    Embed["Create embeddings"]
-    Store[("material_chunks\ntext + vector + metadata")]
-    Ask["Student asks a question"]
-    QueryEmbed["Embed user query"]
-    SearchChunks["Vector search + optional rerank"]
-    Prompt["Inject top chunks into tutor prompt"]
-    Cite["Stream cited sources to UI"]
+    File["fa:fa-file Upload file"]
+    Presign["fa:fa-key Presign URL"]
+    Bucket[("fa:fa-archive S3 / R2")]
+    Material["fa:fa-database Material row"]
+    Text["fa:fa-align-left Extract text"]
+    Chunk["fa:fa-scissors Chunk text"]
+    Embed["fa:fa-vector-square Embed chunks"]
+    Store[("fa:fa-database pgvector chunks")]
+    Question["fa:fa-question User query"]
+    QueryVec["fa:fa-vector-square Embed query"]
+    Vector["fa:fa-search Vector search"]
+    Rerank["fa:fa-sort-amount-down Required rerank"]
+    Prompt["fa:fa-robot Tutor prompt"]
+    Sources["fa:fa-book Citations"]
 
-    Upload --> Presign --> Put --> Create --> Extract --> Chunk --> Embed --> Store
-    Ask --> QueryEmbed --> SearchChunks --> Prompt --> Cite
-    Store --> SearchChunks
+    File --> Presign --> Bucket
+    Presign --> Material --> Text --> Chunk --> Embed --> Store
+    Question --> QueryVec --> Vector --> Rerank --> Prompt --> Sources
+    Store --> Vector
 ```
 
 ### Figure 4. Learning Memory Loop
@@ -146,30 +169,13 @@ erDiagram
     USER ||--o{ REVIEW_DIGEST_LOG : receives
 ```
 
-## Product Figures
-
-### Figure 6. Landing Page, Desktop
-
-![Sapient landing page on desktop](sapient-landing-desktop.png)
-
-### Figure 7. Project Workspace, Desktop
-
-![Sapient project workspace on desktop](sapient-project-desktop.png)
-
-### Figure 8. Landing Page, Mobile
-
-![Sapient landing page on mobile](sapient-landing-mobile.png)
-
-### Figure 9. Chat Workspace, Mobile
-
-![Sapient chat workspace on mobile](sapient-chat-mobile-issues.png)
-
 ## Implemented Features
 
 - Subject-based study projects with goals, level, cover image, and project mind map
 - Streaming tutor chat over SSE
 - Tutor customization per user: tutor name, tone, style, and custom instructions
 - RAG over uploaded PDF, TXT, and Markdown materials
+- Required second-stage reranking for retrieved material chunks
 - Direct browser uploads to S3-compatible storage using presigned URLs
 - Secure material preview through presigned GET URLs
 - Bounded agentic tutoring workflow with visible planning steps and approval-gated actions
@@ -310,8 +316,14 @@ AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 
 RAG_TOP_K=4
+RAG_CANDIDATE_K=50
 RAG_CHUNK_SIZE=1200
 RAG_CHUNK_OVERLAP=200
+RAG_RERANKER_ENABLED=true
+RAG_RERANKER_TIMEOUT_SECONDS=8
+LANGSEARCH_API_KEY=your_langsearch_api_key
+LANGSEARCH_API_BASE_URL=https://api.langsearch.com
+LANGSEARCH_RERANK_MODEL=langsearch-reranker-v1
 
 JWT_SECRET=replace_with_a_long_random_secret
 JWT_ALGORITHM=HS256
@@ -336,6 +348,7 @@ VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id.apps.googleusercontent.com
 Notes:
 
 - `OPENAI_TTS_API_KEY` is required for both `/tts` and `/stt`.
+- `RAG_RERANKER_ENABLED=true` is the expected production setting; `LANGSEARCH_API_KEY` is required for second-stage retrieval reranking.
 - If `VITE_API_BASE_URL` is omitted, the frontend falls back to the current hostname on port `8000`.
 - Material uploads require a working S3-compatible bucket and credentials.
 
