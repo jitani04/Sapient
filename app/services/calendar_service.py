@@ -154,6 +154,22 @@ async def fetch_ical_events(url: str) -> list[CalendarEvent]:
     raise UnsafeFeedURLError("Too many redirects.")
 
 
+_COURSE_SUFFIX_RE = re.compile(r'\[([^\]]+)\]\s*$')
+_SECTION_RE = re.compile(r'^\d+[A-Z]+-(.+?)-(\d+)-[A-Z]+-\d+')
+
+
+def extract_course_key(title: str) -> str | None:
+    """Extract a normalised course key like 'COM SCI 259' from a Canvas assignment title."""
+    m = _COURSE_SUFFIX_RE.search(title)
+    if not m:
+        return None
+    first = m.group(1).split('/')[0].strip()
+    m2 = _SECTION_RE.match(first)
+    if not m2:
+        return None
+    return f"{m2.group(1).strip()} {m2.group(2).strip()}"
+
+
 async def sync_calendar_feed(
     *,
     session: AsyncSession,
@@ -162,6 +178,7 @@ async def sync_calendar_feed(
     events: list[CalendarEvent],
 ) -> int:
     imported = 0
+    mappings: dict[str, str] = feed.course_mappings or {}
     for event in events:
         result = await session.execute(
             select(Assignment).where(
@@ -181,7 +198,8 @@ async def sync_calendar_feed(
             session.add(assignment)
             imported += 1
 
-        assignment.subject = feed.subject
+        course_key = extract_course_key(event.title)
+        assignment.subject = mappings.get(course_key) if course_key and mappings else feed.subject
         assignment.title = event.title[:255]
         assignment.description = event.description
         assignment.due_at = event.due_at

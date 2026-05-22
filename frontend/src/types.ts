@@ -363,6 +363,7 @@ export interface CalendarFeed {
   name: string;
   url: string;
   subject: string | null;
+  course_mappings: Record<string, string> | null;
   source: string;
   last_synced_at: string | null;
   created_at: string;

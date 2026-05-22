@@ -44,6 +44,7 @@ class CalendarFeedRead(BaseModel):
     name: str
     url: str
     subject: str | None = None
+    course_mappings: dict[str, str] | None = None
     source: str
     last_synced_at: datetime | None = None
     created_at: datetime
@@ -53,6 +54,11 @@ class CalendarFeedCreate(BaseModel):
     name: str = Field(default="Canvas calendar", min_length=1, max_length=255)
     url: str = Field(min_length=1, max_length=4096)
     subject: str | None = Field(default=None, max_length=255)
+
+
+class CalendarFeedUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    course_mappings: dict[str, str] | None = None
 
 
 class CalendarFeedSyncResponse(BaseModel):

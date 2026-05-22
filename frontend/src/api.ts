@@ -360,6 +360,18 @@ export async function deleteCalendarFeed(feedId: number): Promise<void> {
   }
 }
 
+export async function updateCalendarFeed(
+  feedId: number,
+  input: { name?: string; course_mappings?: Record<string, string> | null },
+): Promise<CalendarFeed> {
+  const response = await fetch(`${API_BASE_URL}/calendar-feeds/${feedId}`, {
+    method: "PATCH",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return parseJson<CalendarFeed>(response);
+}
+
 interface PresignResponse {
   upload_url: string;
   key: string;

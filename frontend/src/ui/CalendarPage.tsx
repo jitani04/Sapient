@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BookOpen,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
@@ -24,6 +25,7 @@ import {
   listProjectProfiles,
   syncCalendarFeed,
   updateAssignment,
+  updateCalendarFeed,
 } from "../api";
 import { useConfirm } from "../ConfirmDialog";
 import { formatSubjectName } from "../subjects";
@@ -91,6 +93,18 @@ function sourceLabel(source: string): string {
   return source === "canvas" ? "Canvas" : "Sapient";
 }
 
+const COURSE_SUFFIX_RE = /\[([^\]]+)\]\s*$/;
+const SECTION_RE = /^\d+[A-Z]+-(.+?)-(\d+)-[A-Z]+-\d+/;
+
+function extractCourseKey(title: string): string | null {
+  const m = COURSE_SUFFIX_RE.exec(title);
+  if (!m) return null;
+  const first = m[1].split("/")[0].trim();
+  const m2 = SECTION_RE.exec(first);
+  if (!m2) return null;
+  return `${m2[1].trim()} ${m2[2].trim()}`;
+}
+
 function buildMonthCells(year: number, month: number): Date[] {
   // First Sunday on or before the 1st of the visible month.
   const firstOfMonth = new Date(year, month, 1);
@@ -123,6 +137,8 @@ export function CalendarPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const confirm = useConfirm();
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [mappingFeedId, setMappingFeedId] = useState<number | null>(null);
+  const [courseMappingDraft, setCourseMappingDraft] = useState<Record<string, string>>({});
 
   const assignmentsQuery = useQuery({
     queryKey: ["assignments", "upcoming"],
@@ -144,6 +160,22 @@ export function CalendarPage() {
     [...new Set((projectsQuery.data ?? []).map((profile) => profile.subject))]
       .sort((a, b) => a.localeCompare(b))
   ), [projectsQuery.data]);
+
+  const mappingFeed = useMemo(
+    () => (feedsQuery.data ?? []).find((f) => f.id === mappingFeedId) ?? null,
+    [feedsQuery.data, mappingFeedId],
+  );
+
+  const mappingCourses = useMemo(() => {
+    if (!mappingFeedId) return [];
+    const keys = new Set<string>();
+    for (const a of assignmentsQuery.data ?? []) {
+      if (a.feed_id !== mappingFeedId) continue;
+      const key = extractCourseKey(a.title);
+      if (key) keys.add(key);
+    }
+    return [...keys].sort();
+  }, [mappingFeedId, assignmentsQuery.data]);
 
   const assignmentsByDay = useMemo(() => {
     const map = new Map<string, Assignment[]>();
@@ -264,6 +296,22 @@ export function CalendarPage() {
     mutationFn: deleteCalendarFeed,
     onSuccess: invalidateCalendar,
   });
+
+  const updateFeedMutation = useMutation({
+    mutationFn: async ({ feedId, mappings }: { feedId: number; mappings: Record<string, string> }) => {
+      await updateCalendarFeed(feedId, { course_mappings: mappings });
+      return syncCalendarFeed(feedId);
+    },
+    onSuccess: async () => {
+      setMappingFeedId(null);
+      await invalidateCalendar();
+    },
+  });
+
+  function openCourseMapping(feed: CalendarFeed) {
+    setCourseMappingDraft(feed.course_mappings ?? {});
+    setMappingFeedId(feed.id);
+  }
 
   function shiftMonth(delta: number) {
     setVisibleMonth(({ year, month }) => {
@@ -687,6 +735,9 @@ export function CalendarPage() {
                       </p>
                     </div>
                     <div className="calendar-feed-actions">
+                      <button onClick={() => openCourseMapping(feed)} title="Map courses to subjects" type="button">
+                        <BookOpen size={14} strokeWidth={2} />
+                      </button>
                       <button
                         onClick={() => syncFeedMutation.mutate(feed.id)}
                         title="Sync feed"
@@ -776,6 +827,82 @@ export function CalendarPage() {
                   Open source
                 </a>
               ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {mappingFeed ? (
+        <div
+          className="modal-backdrop calendar-detail-backdrop"
+          onClick={() => setMappingFeedId(null)}
+          role="presentation"
+        >
+          <section
+            className="modal-box calendar-detail-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="course-mapping-title"
+          >
+            <div className="calendar-detail-head">
+              <div>
+                <h2 id="course-mapping-title">Map courses — {mappingFeed.name}</h2>
+                <p>Assign each Canvas course code to a Sapient subject.</p>
+              </div>
+              <button
+                className="calendar-detail-close"
+                onClick={() => setMappingFeedId(null)}
+                type="button"
+                aria-label="Close"
+              >
+                <X size={15} strokeWidth={2} />
+              </button>
+            </div>
+
+            {mappingCourses.length === 0 ? (
+              <p className="calendar-detail-description">No assignments found for this feed yet. Try syncing first.</p>
+            ) : (
+              <div className="course-mapping-list">
+                {mappingCourses.map((courseKey) => (
+                  <div className="course-mapping-row" key={courseKey}>
+                    <span className="course-mapping-key">{courseKey}</span>
+                    <select
+                      value={courseMappingDraft[courseKey] ?? ""}
+                      onChange={(e) => setCourseMappingDraft((draft) => ({ ...draft, [courseKey]: e.target.value }))}
+                    >
+                      <option value="">No subject</option>
+                      {subjectOptions.map((subject) => (
+                        <option key={subject} value={subject}>{formatSubjectName(subject)}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="calendar-detail-actions">
+              <button
+                className={buttonClass("secondary")}
+                onClick={() => setMappingFeedId(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className={buttonClass("primary")}
+                disabled={updateFeedMutation.isPending || mappingCourses.length === 0}
+                onClick={() => {
+                  const clean: Record<string, string> = {};
+                  for (const [k, v] of Object.entries(courseMappingDraft)) {
+                    if (v) clean[k] = v;
+                  }
+                  updateFeedMutation.mutate({ feedId: mappingFeed.id, mappings: clean });
+                }}
+                type="button"
+              >
+                {updateFeedMutation.isPending ? "Saving…" : "Save & sync"}
+              </button>
             </div>
           </section>
         </div>

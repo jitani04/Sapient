@@ -16,6 +16,7 @@ from app.schemas.assignment import (
     CalendarFeedCreate,
     CalendarFeedRead,
     CalendarFeedSyncResponse,
+    CalendarFeedUpdate,
 )
 from app.services.calendar_service import fetch_ical_events, sync_calendar_feed
 
@@ -176,6 +177,24 @@ async def sync_calendar_feed_endpoint(
     total, imported = await _fetch_and_sync_feed(session=session, user_id=user_id, feed=feed)
     await session.refresh(feed)
     return CalendarFeedSyncResponse(feed=CalendarFeedRead.model_validate(feed), imported_count=imported, total_events=total)
+
+
+@router.patch("/calendar-feeds/{feed_id}", response_model=CalendarFeedRead)
+async def update_calendar_feed(
+    feed_id: int,
+    payload: CalendarFeedUpdate,
+    user_id: UserDep,
+    session: DbDep,
+) -> CalendarFeedRead:
+    feed = await _get_feed(session, user_id, feed_id)
+    update = payload.model_dump(exclude_unset=True)
+    if "name" in update and payload.name:
+        feed.name = payload.name.strip()
+    if "course_mappings" in update:
+        feed.course_mappings = payload.course_mappings or None
+    await session.commit()
+    await session.refresh(feed)
+    return CalendarFeedRead.model_validate(feed)
 
 
 @router.delete("/calendar-feeds/{feed_id}", status_code=status.HTTP_204_NO_CONTENT)

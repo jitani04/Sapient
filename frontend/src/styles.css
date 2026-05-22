@@ -4141,6 +4141,28 @@ h1, h2, h3 {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.course-mapping-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.25rem;
+}
+.course-mapping-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.course-mapping-key {
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  flex: 0 0 auto;
+  min-width: 9rem;
+  color: var(--color-text);
+}
+.course-mapping-row select {
+  flex: 1 1 auto;
+}
 .calendar-detail-actions {
   display: flex;
   flex-wrap: wrap;
