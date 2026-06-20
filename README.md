@@ -1,10 +1,11 @@
-# Sapient — Agentic Tutoring System
+# Sapient, an Agentic Tutoring System
 
 Sapient is a full-stack AI tutoring platform built around guided study sessions, retrieval over uploaded materials, formative quizzes, saved notes, spaced repetition, and project-based progress tracking.
 
 The production domain is `sapient-ats.com`; **ATS** stands for **Agentic Tutoring System**.
 
 The application is organized by **subject**. Each subject can have its own goals, level, cover image, learning map, uploaded materials, study sessions, flashcards, and weak-area review flow.
+Watch the demo! https://drive.google.com/file/d/15KdNhLlXCjWUHv6Bmps-nQ0C-Xig2JpC/view
 
 ## Legal
 
